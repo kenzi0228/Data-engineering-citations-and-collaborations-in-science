@@ -1,44 +1,49 @@
-Data Engineering: Citations and Collaborations in Science
-Overview
-This project, conducted as part of my MIAGE curriculum at the University of Nanterre, explores the applications of graph theory and operational research, particularly for analyzing scientific citation and collaboration networks. By examining these networks, we aim to identify the most influential researchers, detect collaboration communities, and understand the underlying dynamics of academic interactions.
+# Data Engineering: Citations and Collaborations in Science
 
-Objectives
-Graph Creation: Generate graphs from citation and collaboration data to identify the most influential nodes.
-Community Detection: Use algorithms to detect communities within networks and interpret complex relationships between researchers.
-Centrality Metrics Calculation: Evaluate the importance of nodes by calculating various centrality metrics (degree, closeness, betweenness).
-Network Visualization: Utilize visualization tools to dynamically represent networks and facilitate data exploration.
-Data
+## Overview
+This project, conducted as part of my MIAGE curriculum at the University of Nanterre, explores the applications of graph theory and operational research, particularly for analyzing scientific citation and collaboration networks. By examining these networks, we aim to:
+- Identify the most influential researchers
+- Detect collaboration communities
+- Understand the underlying dynamics of academic interactions
+
+## Objectives
+- **Graph Creation**: Generate graphs from citation and collaboration data to identify the most influential nodes.
+- **Community Detection**: Use algorithms to detect communities within networks and interpret complex relationships between researchers.
+- **Centrality Metrics Calculation**: Evaluate the importance of nodes by calculating various centrality metrics (degree, closeness, betweenness).
+- **Network Visualization**: Utilize visualization tools to dynamically represent networks and facilitate data exploration.
+
+## Data
 The data for citation and collaboration was retrieved from the AMiner Citation Network. The dataset, in JSON format, contains 5,354,309 records with 48,227,950 citation relations, dated May 14, 2021.
 
-Project Structure
-Data Collection and Preparation
+## Project Structure
 
-Download and split the large JSON file into manageable segments.
-Preprocess the data to correct format errors and clean unnecessary columns.
-Filter data by year, field of study, or other criteria.
-Graph Creation
+### Data Collection and Preparation
+1. Download and split the large JSON file into manageable segments.
+2. Preprocess the data to correct format errors and clean unnecessary columns.
+3. Filter data by year, field of study, or other criteria.
 
-Generate citation and collaboration graphs using the filtered data.
-Save the graphs in GEXF format for detailed visualization in Gephi.
-Graph Analysis
+### Graph Creation
+1. Generate citation and collaboration graphs using the filtered data.
+2. Save the graphs in GEXF format for detailed visualization in Gephi.
 
+### Graph Analysis
 Apply various algorithms to analyze the graphs, including:
-Community detection (Louvain algorithm)
-Centrality metrics (degree, closeness, betweenness)
-PageRank calculation
-Shortest path analysis (Dijkstra's algorithm)
-Clustering coefficient and graph diameter calculation
-Visualization
+- Community detection (Louvain algorithm)
+- Centrality metrics (degree, closeness, betweenness)
+- PageRank calculation
+- Shortest path analysis (Dijkstra's algorithm)
+- Clustering coefficient and graph diameter calculation
 
-Use Gephi to create dynamic and interactive visualizations of the networks.
-Employ layouts like Force Atlas 2, Yifan Hu, and Fruchterman Reingold for better clarity and understanding.
-Installation
-To set up the project environment, follow these steps:
+### Visualization
+- Use Gephi to create dynamic and interactive visualizations of the networks.
+- Employ layouts like Force Atlas 2, Yifan Hu, and Fruchterman Reingold for better clarity and understanding.
 
-Clone the Repository
+## Installation
+
+### Clone the Repository
+```bash
 git clone https://github.com/kenzi0228/Data-engineering-citations-and-collaborations-in-science.git
 cd Data-engineering-citations-and-collaborations-in-science
-
 Install Dependencies
 The project relies on several Python libraries. Install them using pip:
 pip install -r requirements.txt
