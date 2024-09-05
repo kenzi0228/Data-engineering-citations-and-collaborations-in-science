@@ -41,43 +41,55 @@ Apply various algorithms to analyze the graphs, including:
 ## Installation
 
 ### Clone the Repository
+
+First, clone the repository to your local machine using the following commands:
+
 ```bash
 git clone https://github.com/kenzi0228/Data-engineering-citations-and-collaborations-in-science.git
 cd Data-engineering-citations-and-collaborations-in-science
-Install Dependencies
-The project relies on several Python libraries. Install them using pip:
+
+### Install Dependencies
+The project relies on several Python libraries. Install them using:
+
+```bash
 pip install -r requirements.txt
 
-Data Preparation
-Download the dataset from AMiner and place it in the Dataset directory. Use the provided scripts to preprocess and filter the data as described in the project structure.
+### Data Preparation
+Download the dataset from **AMiner** and place it in the `Dataset` directory.
+Use the provided scripts to preprocess and filter the data.
 
-Usage
-The project includes several scripts for different stages of the analysis:
+## Usage
 
-Data Preprocessing
+### Data Preprocessing
+- **CorrectionFormatJSON.py**: Splits and corrects the JSON format.
+- **PretraiterNumberInt.py**: Converts year fields to integers.
+- **NettoyerColonnes.py**: Cleans unnecessary columns.
 
-CorrectionFormatJSON.py: Split and correct JSON format.
-PretraiterNumberInt.py: Convert year fields to integers.
-NettoyerColonnes.py: Clean unnecessary columns.
-Graph Analysis
+### Graph Analysis
+- **DessinerGraphe.py**: Creates citation and collaboration graphs.
+- **AnalyseGraphe.py**: Performs various graph analyses.
+- **NettoyerGraphe.py**: Ensures graph integrity before analysis.
 
-DessinerGraphe.py: Create citation and collaboration graphs.
-AnalyseGraphe.py: Perform various analyses on the graphs.
-NettoyerGraphe.py: Ensure graph integrity before analysis.
-Visualization
+### Visualization
+- Use **Gephi** to visualize the generated GEXF files.
 
-Use Gephi to visualize the generated GEXF files.
-Results
-The analysis revealed significant insights into academic networks, including:
+## Results
+The analysis of the citation and collaboration networks led to several key findings:
 
-Influential Researchers and Publications: Identified through centrality metrics and PageRank scores.
-Collaboration Communities: Detected using the Louvain algorithm, showing closely collaborating groups.
-Network Dynamics: Visualizations highlighted trends and key players in various research fields.
-Conclusion
-This project demonstrated the importance and utility of graph theory and open data in understanding academic and scientific dynamics. The methodologies developed can serve as a foundation for future analyses, helping researchers and decision-makers gain deeper insights into academic networks.
+- **Influential Researchers and Publications**: Identified through centrality metrics and PageRank scores.
+- **Collaboration Communities**: Detected with the Louvain algorithm, revealing tightly-knit collaboration groups.
+- **Network Dynamics**: Visualizations provided insights into trends and key figures across various research fields.
 
-Future Work
-Future enhancements include developing an integrated graphical interface and modularizing the Python scripts into classes. This would make the project more accessible to non-technical users, allowing them to easily apply filters and criteria for creating and analyzing custom networks.
+## Conclusion
+This project highlights the power of **graph theory** and **open data** in understanding the dynamics of academic and scientific networks. The methodologies and tools used here offer a solid foundation for future research, helping researchers and decision-makers gain deeper insights into collaboration and citation networks.
+
+## Future Work
+Planned enhancements for the project include:
+
+- Developing an **integrated graphical interface** to simplify usage for non-technical users.
+- Modularizing the Python scripts into **classes** to improve code maintainability and flexibility.
+- Expanding the project to allow users to **customize filters and criteria** for network generation and analysis.
+
 
 References
 Newman, M. (2010). Networks: An Introduction. Oxford University Press.
