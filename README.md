@@ -47,12 +47,14 @@ First, clone the repository to your local machine using the following commands:
 ```bash
 git clone https://github.com/kenzi0228/Data-engineering-citations-and-collaborations-in-science.git
 cd Data-engineering-citations-and-collaborations-in-science
+```
 
 ### Install Dependencies
 The project relies on several Python libraries. Install them using:
 
 ```bash
 pip install -r requirements.txt
+```
 
 ### Data Preparation
 Download the dataset from **AMiner** and place it in the `Dataset` directory.
