@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+.venv/
+venv/
+env/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Data
+data/raw/*
+data/interim/*
+data/processed/*
+!data/raw/.gitkeep
+!data/interim/.gitkeep
+!data/processed/.gitkeep
+!data/sample/.gitkeep
+
+# Outputs
+outputs/figures/*
+outputs/graphs/*
+outputs/metrics/*
+!outputs/figures/.gitkeep
+!outputs/graphs/.gitkeep
+!outputs/metrics/.gitkeep

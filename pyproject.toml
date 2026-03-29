@@ -1,0 +1,10 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "citation-graphs"
+version = "0.1.0"
+description = "Scientific citation and collaboration graph analysis pipeline"
+readme = "README.md"
+requires-python = ">=3.10"
