@@ -1,39 +1,39 @@
-import os
-import json
+from __future__ import annotations
 
-def merge_json_files(source_directory, output_directory):
+import argparse
+import sys
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+SRC_PATH = PROJECT_ROOT / "src"
+
+if str(SRC_PATH) not in sys.path:
+    sys.path.insert(0, str(SRC_PATH))
+
+from citation_graphs.io import list_json_files, load_json, save_json
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Merge multiple JSON files into one.")
+    parser.add_argument("--input", required=True, help="Input directory")
+    parser.add_argument("--output", required=True, help="Output file")
+    return parser.parse_args()
+
+
+def main() -> None:
+    args = parse_args()
+    input_dir = Path(args.input)
+    output_file = Path(args.output)
+
     merged_data = []
-    # Extraire le nom du dossier pour le fichier de sortie
-    folder_name = os.path.basename(source_directory)
-    output_file_name = f"{folder_name}_merged.json"
-    output_file_path = os.path.join(output_directory, output_file_name)
+    for file_path in list_json_files(input_dir):
+        data = load_json(file_path)
+        if isinstance(data, list):
+            merged_data.extend(data)
 
-    for filename in os.listdir(source_directory):
-        if filename.endswith(".json"):
-            file_path = os.path.join(source_directory, filename)
-            with open(file_path, 'r', encoding='utf-8') as file:
-                data = json.load(file)
-                merged_data.extend(data)
+    save_json(merged_data, output_file)
+    print(f"Saved merged file to: {output_file}")
 
-    with open(output_file_path, 'w', encoding='utf-8') as output_file:
-        json.dump(merged_data, output_file, indent=4)
-
-    print(f"Tous les fichiers JSON ont été fusionnés dans : {output_file_path}")
 
 if __name__ == "__main__":
-    # Obtenir le chemin du répertoire du script
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-
-    # Chemin relatif du dossier contenant les fichiers JSON à fusionner
-    source_directory = os.path.join(current_dir, '..', 'Dataset', 'Split_filtré', 'Filtered_by_5_language')
-    # Chemin relatif du dossier de sortie
-    output_directory = os.path.join(current_dir, '..', 'Dataset', 'Split_fusionné')
-
-    # Assurer que le répertoire de sortie existe
-    if not os.path.exists(output_directory):
-        os.makedirs(output_directory)
-
-    # Appel de la fonction pour fusionner les fichiers
-    merge_json_files(source_directory, output_directory)
-
-
+    main()

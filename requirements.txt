@@ -1,7 +1,9 @@
-networkx
-matplotlib
-pandas
-numpy
-python-louvain
-jupyter
-notebook
+networkx>=3.0
+matplotlib>=3.7
+pandas>=2.0
+numpy>=1.24
+python-louvain>=0.16
+jupyter>=1.0
+notebook>=7.0
+lxml>=5.0
+pytest>=8.0

@@ -39,57 +39,66 @@ The main goals of the project are:
 
 ## Dataset
 
-The project relies on academic metadata from the **AMiner** dataset.
+This project uses the **AMiner DBLP Citation Network Dataset**.
 
-Typical fields used in the workflow include:
-- paper identifiers,
-- titles and keywords,
-- authors,
-- affiliations or institutions,
-- domains / disciplines,
-- references / citations.
+Source:
+- AMiner Open Data: `https://www.aminer.org/open/article?id=655db2202ab17a072284bc0c`
 
-Because the original dataset can be large, the project includes utilities for:
-- formatting and repairing raw JSON,
-- splitting large files,
-- filtering subsets of interest,
-- cleaning malformed or incomplete records.
+Dataset version used in this project:
+- **DBLP-Citation-network V13**
+- **Release date: 2021-05-14**
 
-> Note: raw datasets are not versioned in this repository due to size constraints.
+The dataset contains large-scale academic publication metadata and citation relationships extracted from sources such as **DBLP, ACM, MAG (Microsoft Academic Graph), and others**.
 
+Typical fields used in this project include:
+- paper identifiers (`_id`)
+- titles
+- authors
+- year
+- fields of study (`fos`)
+- references / citations
+
+Because the original dataset is large and not suitable for direct versioning in GitHub, raw files are not stored in this repository. Instead, this repository provides preprocessing, filtering, graph construction, analysis, and export utilities built around that dataset.
 ---
 
 ## Methodology
 
-The project workflow can be summarized as follows:
+The project now follows a clearer engineering pipeline:
 
-### 1. Data preprocessing
-Raw files are cleaned, reformatted, merged, and prepared for analysis.
+### 1. Dataset preprocessing
+Raw dataset files are repaired and standardized before analysis:
+- malformed JSON fixes
+- `NumberInt(...)` normalization
+- field selection / schema simplification
 
-### 2. Filtering
-Relevant subsets are extracted based on search terms, domains, institutions, or other criteria.
+### 2. Filtering and extraction
+Relevant subsets can be produced using:
+- exact year filters
+- year range filters
+- before / after year filters
+- field-of-study filtering
+- metadata search utilities
 
 ### 3. Graph construction
-Graphs are created from relationships such as:
-- citation links between papers,
-- collaboration links between researchers or institutions.
+Two graph types can be built from the dataset:
+- **citation graph**: directed graph linking referenced papers to citing papers
+- **collaboration graph**: undirected weighted graph linking co-authors
 
-### 4. Graph cleaning
-Noise reduction and graph simplification are applied to improve interpretability.
+### 4. Graph analysis
+The analysis pipeline includes:
+- graph summary metrics
+- centrality measures
+- PageRank
+- community detection
+- shortest path inspection
+- top node export
 
-### 5. Graph analysis
-The project computes or explores metrics such as:
-- connected components,
-- centrality indicators,
-- PageRank,
-- communities,
-- influential nodes,
-- graph diameter and structural properties.
-
-### 6. Visualization / export
-Outputs can be exported for network visualization and exploration.
-
----
+### 5. Graph repair and export
+The repository also includes utilities to:
+- repair malformed GEXF files
+- export metrics as JSON
+- export graph files for tools such as Gephi
+- optionally generate graph images
 
 ## Repository Structure
 
@@ -109,25 +118,37 @@ Outputs can be exported for network visualization and exploration.
 │   ├── graphs/
 │   └── metrics/
 ├── scripts/
+│   ├── preprocess_dataset.py
+│   ├── filter_dataset.py
+│   ├── merge_files.py
+│   ├── build_graph.py
+│   ├── analyze_graph.py
+│   ├── export_top_nodes.py
+│   ├── search_dataset.py
+│   ├── repair_gexf.py
+│   └── split_dataset_2gb.py
 ├── src/
 │   └── citation_graphs/
+│       ├── __init__.py
+│       ├── io.py
+│       ├── preprocessing.py
+│       ├── filtering.py
+│       ├── graph_builder.py
+│       ├── graph_analysis.py
+│       ├── graph_cleaning.py
+│       ├── export.py
+│       ├── search.py
+│       └── utils.py
 ├── tests/
+│   ├── test_preprocessing.py
+│   ├── test_graph_builder.py
+│   └── test_graph_analysis.py
 ├── .gitignore
 ├── LICENSE
 ├── pyproject.toml
 ├── README.md
 └── requirements.txt
 ```
-
-Tech Stack
-Python
-NetworkX
-Pandas
-NumPy
-Matplotlib
-python-louvain
-Jupyter Notebook
-Gephi (for graph visualization)
 
 ## Installation
 
@@ -157,20 +178,6 @@ Install dependencies:
 pip install -r requirements.txt
 ```
 
-## Usage
-
-At this stage, the project mainly provides script-based workflows.
-
-Examples:
-```bash
-python scripts/fix_json_format.py
-python scripts/filter_dataset.py
-python scripts/build_graph.py
-python scripts/analyze_graph.py
-python scripts/export_top_nodes.py
-```
-
-As the repository evolves, these scripts will progressively be converted into reusable modules and CLI-friendly commands.
 
 ## Outputs
 
@@ -189,48 +196,52 @@ These outputs should typically be stored in:
 - outputs/metrics/
 - outputs/figures/
 
+## Tech Stack
+
+- **Python**
+- **NetworkX**
+- **Pandas**
+- **NumPy**
+- **Matplotlib**
+- **python-louvain**
+- **lxml**
+- **pytest**
+- **Jupyter Notebook**
+- **Gephi** (for graph exploration and visualization)
+
 ## Key Skills Demonstrated
 
-This repository showcases skills in:
+This repository showcases practical skills in:
 
-- data preprocessing on large semi-structured files,
-- graph-based data modeling,
-- exploratory graph analytics,
-- script-based data pipeline design,
-- network analysis and visualization preparation,
-- repository structuring and engineering hygiene.
-- Current Limitations
+- preprocessing large semi-structured academic datasets
+- graph-based data modeling
+- citation and collaboration network construction
+- CLI-oriented data pipeline design
+- network analysis and metric extraction
+- modular Python project structuring
+- export and interoperability with graph visualization tooling
+- basic automated testing for core graph and preprocessing logic
 
-The current version of the project still has several limitations:
+## Current Limitations
 
-- scripts are not yet fully modularized,
-- some workflows remain interactive rather than CLI-driven,
-- automated tests are still limited,
-- dataset configuration is not yet centralized,
-- reproducibility can be improved further.
+The repository has been significantly cleaned and modularized, but some limitations still remain:
 
-These limitations are being addressed as part of the repository refactor.
+- the raw AMiner dataset is not bundled in the repository because of its size
+- large-scale graph computations can become expensive depending on the selected subset
+- visualization with spring layouts is not suitable for very large graphs
+- the test suite currently focuses on core units rather than full end-to-end pipelines
+- configuration is still CLI-driven and not yet centralized in a dedicated config system
 
 ## Roadmap
 
-Planned improvements include:
+Planned next improvements include:
 
-- refactoring scripts into reusable Python modules,
-- adding argparse-based command-line interfaces,
-- improving configuration management,
-- adding tests for preprocessing and graph building logic,
-- creating a small sample dataset for reproducible demos,
-- improving logging, documentation, and output standardization.
-- Recruiter / Interview Angle
-
-This project is intended to highlight practical capabilities relevant to:
-
-- Data Engineering
-- Data Science
-- BI / Analytics Engineering
-- Graph Analytics / Network Analysis
-
-It demonstrates the ability to work on non-trivial relational data, structure a processing workflow, and extract insight from graph-based systems.
+- adding end-to-end pipeline tests
+- introducing centralized configuration management
+- adding logging across all scripts
+- providing a small reproducible sample dataset
+- improving performance for larger graph subsets
+- adding richer documentation for graph semantics and output interpretation
 
 ## Author
 
