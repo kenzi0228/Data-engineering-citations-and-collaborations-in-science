@@ -1,6 +1,7 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import json
+import random
 from pathlib import Path
 from typing import Any
 
@@ -12,105 +13,228 @@ def load_graph(file_path: str | Path) -> nx.Graph:
     return nx.read_gexf(file_path)
 
 
-def save_json(data: dict[str, Any], file_path: str | Path) -> None:
-    output_path = Path(file_path)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
+def get_largest_component(graph: nx.Graph) -> nx.Graph:
+    undirected = graph.to_undirected()
 
-    with output_path.open("w", encoding="utf-8") as file:
-        json.dump(data, file, indent=4, ensure_ascii=False)
+    if undirected.number_of_nodes() == 0:
+        return undirected.copy()
+
+    components = list(nx.connected_components(undirected))
+    if not components:
+        return undirected.copy()
+
+    largest_nodes = max(components, key=len)
+    return undirected.subgraph(largest_nodes).copy()
 
 
-def get_graph_summary(graph: nx.Graph) -> dict[str, Any]:
-    summary: dict[str, Any] = {
+def approximate_diameter(graph: nx.Graph, sample_size: int = 25, seed: int = 42) -> int | None:
+    if graph.number_of_nodes() == 0:
+        return None
+
+    if graph.number_of_nodes() == 1:
+        return 0
+
+    rng = random.Random(seed)
+    nodes = list(graph.nodes())
+    sampled_nodes = nodes if len(nodes) <= sample_size else rng.sample(nodes, sample_size)
+
+    max_distance = 0
+    for node in sampled_nodes:
+        lengths = nx.single_source_shortest_path_length(graph, node)
+        if lengths:
+            local_max = max(lengths.values())
+            if local_max > max_distance:
+                max_distance = local_max
+
+    return max_distance
+
+
+def get_graph_summary(
+    graph: nx.Graph,
+    exact_diameter_max_nodes: int = 5000,
+    approximate_diameter_sample_size: int = 25,
+) -> dict[str, Any]:
+    largest_component = get_largest_component(graph)
+
+    summary = {
+        "is_directed": graph.is_directed(),
         "num_nodes": graph.number_of_nodes(),
         "num_edges": graph.number_of_edges(),
         "density": nx.density(graph),
-        "is_directed": graph.is_directed(),
+        "largest_component_nodes": largest_component.number_of_nodes(),
+        "largest_component_edges": largest_component.number_of_edges(),
     }
 
-    if graph.number_of_nodes() == 0:
-        summary["clustering_coefficient"] = None
-        summary["largest_component_size"] = 0
-        summary["diameter"] = None
-        return summary
+    if largest_component.number_of_nodes() > 1:
+        summary["largest_component_average_clustering"] = nx.average_clustering(largest_component)
 
-    undirected_graph = graph.to_undirected()
-    summary["clustering_coefficient"] = nx.average_clustering(undirected_graph)
-
-    connected_components = list(nx.connected_components(undirected_graph))
-    if connected_components:
-        largest_component_nodes = max(connected_components, key=len)
-        largest_component = undirected_graph.subgraph(largest_component_nodes).copy()
-        summary["largest_component_size"] = largest_component.number_of_nodes()
-        summary["diameter"] = (
-            nx.diameter(largest_component)
-            if largest_component.number_of_nodes() > 1
-            else 0
-        )
+        if largest_component.number_of_nodes() <= exact_diameter_max_nodes:
+            summary["largest_component_diameter"] = nx.diameter(largest_component)
+            summary["largest_component_diameter_mode"] = "exact"
+        else:
+            summary["largest_component_diameter"] = approximate_diameter(
+                largest_component,
+                sample_size=approximate_diameter_sample_size,
+            )
+            summary["largest_component_diameter_mode"] = "approximate"
     else:
-        summary["largest_component_size"] = 0
-        summary["diameter"] = None
+        summary["largest_component_diameter"] = 0
+        summary["largest_component_diameter_mode"] = "exact"
+        summary["largest_component_average_clustering"] = 0.0
 
     return summary
 
 
-def _sort_top_scores(scores: dict[str, float], top_n: int) -> list[dict[str, Any]]:
+def _top_scores(scores: dict[Any, float], top_n: int) -> list[dict[str, Any]]:
     return [
-        {"node_id": node_id, "score": score}
+        {"node_id": str(node_id), "score": float(score)}
         for node_id, score in sorted(scores.items(), key=lambda item: item[1], reverse=True)[:top_n]
     ]
 
 
-def get_top_centralities(graph: nx.Graph, top_n: int = 5) -> dict[str, list[dict[str, Any]]]:
-    degree_scores = nx.degree_centrality(graph)
-    closeness_scores = nx.closeness_centrality(graph)
-    betweenness_scores = nx.betweenness_centrality(graph)
-
-    return {
-        "degree": _sort_top_scores(degree_scores, top_n),
-        "closeness": _sort_top_scores(closeness_scores, top_n),
-        "betweenness": _sort_top_scores(betweenness_scores, top_n),
-    }
+def get_top_degree_centrality(graph: nx.Graph, top_n: int = 10) -> list[dict[str, Any]]:
+    scores = nx.degree_centrality(graph)
+    return _top_scores(scores, top_n)
 
 
-def get_top_pagerank(graph: nx.Graph, top_n: int = 5) -> list[dict[str, Any]]:
-    pagerank_scores = nx.pagerank(graph)
-    return _sort_top_scores(pagerank_scores, top_n)
+def get_top_closeness_centrality(graph: nx.Graph, top_n: int = 10) -> list[dict[str, Any]]:
+    scores = nx.closeness_centrality(graph)
+    return _top_scores(scores, top_n)
 
 
-def detect_communities(graph: nx.Graph) -> dict[str, Any]:
+def get_top_betweenness_centrality(
+    graph: nx.Graph,
+    top_n: int = 10,
+    approximate: bool = True,
+    sample_k: int = 200,
+) -> list[dict[str, Any]]:
     if graph.number_of_nodes() == 0:
-        return {"num_communities": 0, "sample_partition": []}
+        return []
 
-    undirected_graph = graph.to_undirected()
-    partition = community_louvain.best_partition(undirected_graph)
+    if approximate and graph.number_of_nodes() > sample_k:
+        scores = nx.betweenness_centrality(graph, k=sample_k, seed=42)
+    else:
+        scores = nx.betweenness_centrality(graph)
+
+    return _top_scores(scores, top_n)
+
+
+def pagerank_power_iteration(
+    graph: nx.Graph,
+    alpha: float = 0.85,
+    max_iter: int = 100,
+    tol: float = 1.0e-6,
+) -> dict[Any, float]:
+    if graph.number_of_nodes() == 0:
+        return {}
+
+    directed = graph if graph.is_directed() else graph.to_directed()
+    nodes = list(directed.nodes())
+    n = len(nodes)
+
+    ranks = {node: 1.0 / n for node in nodes}
+    out_degree = {node: directed.out_degree(node) for node in nodes}
+
+    for _ in range(max_iter):
+        new_ranks = {node: (1.0 - alpha) / n for node in nodes}
+
+        dangling_sum = alpha * sum(ranks[node] for node in nodes if out_degree[node] == 0) / n
+
+        for node in nodes:
+            new_ranks[node] += dangling_sum
+
+        for node in nodes:
+            if out_degree[node] == 0:
+                continue
+
+            contribution = alpha * ranks[node] / out_degree[node]
+            for neighbor in directed.successors(node):
+                new_ranks[neighbor] += contribution
+
+        error = sum(abs(new_ranks[node] - ranks[node]) for node in nodes)
+        ranks = new_ranks
+
+        if error < n * tol:
+            break
+
+    return ranks
+
+
+def get_top_pagerank(graph: nx.Graph, top_n: int = 10) -> list[dict[str, Any]]:
+    if graph.number_of_nodes() == 0:
+        return []
+
+    scores = pagerank_power_iteration(graph)
+    return _top_scores(scores, top_n)
+
+
+def detect_communities(graph: nx.Graph, top_n: int = 10) -> dict[str, Any]:
+    undirected = graph.to_undirected()
+
+    if undirected.number_of_nodes() == 0:
+        return {
+            "num_communities": 0,
+            "largest_communities": [],
+            "sample_partition": [],
+        }
+
+    partition = community_louvain.best_partition(undirected)
+
+    community_sizes: dict[int, int] = {}
+    for _, community_id in partition.items():
+        community_sizes[community_id] = community_sizes.get(community_id, 0) + 1
+
+    largest_communities = sorted(
+        community_sizes.items(),
+        key=lambda item: item[1],
+        reverse=True
+    )[:top_n]
 
     return {
-        "num_communities": len(set(partition.values())),
+        "num_communities": len(community_sizes),
+        "largest_communities": [
+            {"community_id": int(community_id), "size": int(size)}
+            for community_id, size in largest_communities
+        ],
         "sample_partition": [
-            {"node_id": node_id, "community_id": community_id}
-            for node_id, community_id in list(partition.items())[:10]
+            {"node_id": str(node_id), "community_id": int(community_id)}
+            for node_id, community_id in list(partition.items())[:20]
         ],
     }
 
 
-def get_node_details(graph: nx.Graph, node_id: str) -> dict[str, Any] | None:
-    if node_id not in graph.nodes:
-        return None
-    return dict(graph.nodes[node_id])
-
-
-def get_shortest_path(graph: nx.Graph, source: str, target: str) -> list[str] | None:
-    try:
-        return nx.shortest_path(graph, source=source, target=target)
-    except (nx.NetworkXNoPath, nx.NodeNotFound):
-        return None
-
-
-def analyze_graph(graph: nx.Graph, top_n: int = 5) -> dict[str, Any]:
+def analyze_graph(
+    graph: nx.Graph,
+    top_n: int = 10,
+    approximate_betweenness: bool = True,
+    betweenness_sample_k: int = 200,
+    exact_diameter_max_nodes: int = 5000,
+    approximate_diameter_sample_size: int = 25,
+) -> dict[str, Any]:
     return {
-        "summary": get_graph_summary(graph),
-        "centralities": get_top_centralities(graph, top_n=top_n),
+        "summary": get_graph_summary(
+            graph,
+            exact_diameter_max_nodes=exact_diameter_max_nodes,
+            approximate_diameter_sample_size=approximate_diameter_sample_size,
+        ),
+        "centralities": {
+            "degree": get_top_degree_centrality(graph, top_n=top_n),
+            "closeness": get_top_closeness_centrality(graph, top_n=top_n),
+            "betweenness": get_top_betweenness_centrality(
+                graph,
+                top_n=top_n,
+                approximate=approximate_betweenness,
+                sample_k=betweenness_sample_k,
+            ),
+        },
         "pagerank": get_top_pagerank(graph, top_n=top_n),
-        "communities": detect_communities(graph),
+        "communities": detect_communities(graph, top_n=top_n),
     }
+
+
+def save_analysis_results(results: dict[str, Any], output_path: str | Path) -> None:
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    with output_path.open("w", encoding="utf-8") as file:
+        json.dump(results, file, indent=4, ensure_ascii=False)

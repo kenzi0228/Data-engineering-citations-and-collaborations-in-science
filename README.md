@@ -245,7 +245,7 @@ Planned next improvements include:
 
 ## Author
 
-Kenzi Lali
+Kenzi Mohamed Lali
 
 GitHub: kenzi0228
 

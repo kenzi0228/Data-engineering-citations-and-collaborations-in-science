@@ -1,0 +1,206 @@
+{
+    "metadata": {
+        "file_name": "dblpv13.json",
+        "file_path": "C:\\Users\\KenziLali\\Desktop\\Data-engineering-citations-and-collaborations-in-science\\data\\raw\\dblpv13.json",
+        "file_size_bytes": 17352640799,
+        "file_size_gb": 16.161,
+        "suffix": ".json"
+    },
+    "detected_structure": "json_array_non_standard_possible",
+    "sample_record_count": 3,
+    "schema_profile": {
+        "num_sampled_records": 3,
+        "fields": {
+            "_id": {
+                "occurrences": 3,
+                "observed_types": [
+                    "str"
+                ],
+                "sample_value": "53e99784b7602d9701f3e3f5"
+            },
+            "title": {
+                "occurrences": 3,
+                "observed_types": [
+                    "str"
+                ],
+                "sample_value": "3GIO."
+            },
+            "venue": {
+                "occurrences": 3,
+                "observed_types": [
+                    "dict"
+                ],
+                "sample_value": {
+                    "type": 0
+                }
+            },
+            "year": {
+                "occurrences": 3,
+                "observed_types": [
+                    "int"
+                ],
+                "sample_value": 2011
+            },
+            "keywords": {
+                "occurrences": 3,
+                "observed_types": [
+                    "list"
+                ],
+                "sample_value": []
+            },
+            "n_citation": {
+                "occurrences": 3,
+                "observed_types": [
+                    "int"
+                ],
+                "sample_value": 0
+            },
+            "lang": {
+                "occurrences": 3,
+                "observed_types": [
+                    "str"
+                ],
+                "sample_value": "en"
+            },
+            "authors": {
+                "occurrences": 2,
+                "observed_types": [
+                    "list"
+                ],
+                "sample_value": [
+                    {
+                        "_id": "53f45728dabfaec09f209538",
+                        "name": "Peijuan Wang"
+                    },
+                    {
+                        "_id": "5601754345cedb3395e59457",
+                        "name": "Jiahua Zhang"
+                    },
+                    {
+                        "_id": "53f38438dabfae4b34a08928",
+                        "name": "Donghui Xie"
+                    },
+                    {
+                        "_id": "5601754345cedb3395e5945a",
+                        "name": "Yanyan Xu"
+                    },
+                    {
+                        "_id": "53f43d25dabfaeecd6995149",
+                        "name": "Yun Xu"
+                    }
+                ]
+            },
+            "fos": {
+                "occurrences": 2,
+                "observed_types": [
+                    "list"
+                ],
+                "sample_value": [
+                    "Agronomy",
+                    "Moisture",
+                    "Hydrology",
+                    "Environmental science",
+                    "Dry weight",
+                    "Water content",
+                    "Stomatal conductance",
+                    "Transpiration",
+                    "Irrigation",
+                    "Soil water",
+                    "Canopy"
+                ]
+            },
+            "page_start": {
+                "occurrences": 2,
+                "observed_types": [
+                    "str"
+                ],
+                "sample_value": "1930"
+            },
+            "page_end": {
+                "occurrences": 2,
+                "observed_types": [
+                    "str"
+                ],
+                "sample_value": "1933"
+            },
+            "volume": {
+                "occurrences": 2,
+                "observed_types": [
+                    "str"
+                ],
+                "sample_value": "null"
+            },
+            "issue": {
+                "occurrences": 2,
+                "observed_types": [
+                    "str"
+                ],
+                "sample_value": "null"
+            },
+            "issn": {
+                "occurrences": 2,
+                "observed_types": [
+                    "str"
+                ],
+                "sample_value": ""
+            },
+            "isbn": {
+                "occurrences": 2,
+                "observed_types": [
+                    "str"
+                ],
+                "sample_value": ""
+            },
+            "doi": {
+                "occurrences": 2,
+                "observed_types": [
+                    "str"
+                ],
+                "sample_value": "10.1109/IGARSS.2011.6049503"
+            },
+            "pdf": {
+                "occurrences": 2,
+                "observed_types": [
+                    "NoneType"
+                ],
+                "sample_value": null
+            },
+            "url": {
+                "occurrences": 2,
+                "observed_types": [
+                    "list"
+                ],
+                "sample_value": [
+                    "http://dx.doi.org/10.1109/IGARSS.2011.6049503"
+                ]
+            },
+            "abstract": {
+                "occurrences": 2,
+                "observed_types": [
+                    "str"
+                ],
+                "sample_value": "Drought is the first place in all the natural disasters in the world. It is especially serious in North China Plain. In this paper, different soil water content control levels at winter wheat growth stages are performed on Gucheng Ecological-Meteorological Integrated Observation Experiment Station o"
+            },
+            "references": {
+                "occurrences": 1,
+                "observed_types": [
+                    "list"
+                ],
+                "sample_value": [
+                    "53e99cf5b7602d97025ace63",
+                    "557e8a7a6fee0fe990caa63d",
+                    "53e9a96cb7602d97032c459a",
+                    "53e9b929b7602d9704515791",
+                    "557e59ebf6678c77ea222447"
+                ]
+            }
+        },
+        "field_count": 20
+    },
+    "non_standard_json_tokens_detected": true,
+    "notes": [
+        "The raw file appears to contain non-standard JSON tokens such as NumberInt(...).",
+        "Inspection samples were parsed with temporary normalization only.",
+        "The raw source file was not modified."
+    ]
+}

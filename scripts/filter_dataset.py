@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import argparse
 import sys
@@ -10,58 +10,45 @@ SRC_PATH = PROJECT_ROOT / "src"
 if str(SRC_PATH) not in sys.path:
     sys.path.insert(0, str(SRC_PATH))
 
-from citation_graphs.filtering import (
-    filter_after_year,
-    filter_before_year,
-    filter_by_exact_year,
-    filter_by_fos,
-    filter_by_year_range,
-)
-from citation_graphs.io import list_json_files, load_json, save_json
+from citation_graphs.filtering import create_subset
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Filter JSON dataset files.")
-    parser.add_argument("--input", required=True, help="Input directory containing JSON files")
-    parser.add_argument("--output", required=True, help="Output directory")
+    parser = argparse.ArgumentParser(description="Create filtered subsets from normalized parquet data.")
+    parser.add_argument("--input", required=True, help="Normalized parquet root directory")
+    parser.add_argument("--output", required=True, help="Subset output root directory")
     parser.add_argument(
         "--mode",
         required=True,
-        choices=["year", "range", "before", "after", "fos"],
+        choices=["year", "range", "fos", "year_fos"],
         help="Filtering mode",
     )
+    parser.add_argument("--subset-name", required=True, help="Name of the subset to create")
     parser.add_argument("--year", type=int, help="Year value")
     parser.add_argument("--start-year", type=int, help="Start year")
     parser.add_argument("--end-year", type=int, help="End year")
-    parser.add_argument("--fos", nargs="*", help="FOS values")
+    parser.add_argument("--fos", help="Field of study search term")
+    parser.add_argument("--overwrite", action="store_true", help="Overwrite existing subset directory")
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
-    input_dir = Path(args.input)
-    output_dir = Path(args.output)
-    output_dir.mkdir(parents=True, exist_ok=True)
 
-    files = list_json_files(input_dir)
+    summary = create_subset(
+        input_dir=args.input,
+        output_dir=args.output,
+        subset_name=args.subset_name,
+        mode=args.mode,
+        year=args.year,
+        start_year=args.start_year,
+        end_year=args.end_year,
+        fos=args.fos,
+        overwrite=args.overwrite,
+    )
 
-    for file_path in files:
-        records = load_json(file_path)
-
-        if args.mode == "year":
-            filtered = filter_by_exact_year(records, args.year)
-        elif args.mode == "range":
-            filtered = filter_by_year_range(records, args.start_year, args.end_year)
-        elif args.mode == "before":
-            filtered = filter_before_year(records, args.year)
-        elif args.mode == "after":
-            filtered = filter_after_year(records, args.year)
-        else:
-            filtered = filter_by_fos(records, args.fos or [])
-
-        output_file = output_dir / f"{file_path.stem}_filtered.json"
-        save_json(filtered, output_file)
-        print(f"Saved: {output_file}")
+    print("Subset creation completed.")
+    print(summary)
 
 
 if __name__ == "__main__":
