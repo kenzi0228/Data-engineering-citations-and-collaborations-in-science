@@ -1,4 +1,9 @@
-﻿from __future__ import annotations
+$ErrorActionPreference = "Stop"
+
+New-Item -ItemType Directory -Force -Path "app" | Out-Null
+
+@'
+from __future__ import annotations
 
 import json
 import subprocess
@@ -211,12 +216,12 @@ def raise_ui_error(message: str, category: str = "error") -> None:
 
 st.set_page_config(
     page_title="Citation & Collaboration Graph Pipeline",
-    page_icon="ðŸ“Š",
+    page_icon="📊",
     layout="wide",
 )
 
 st.title("Citation & Collaboration Graph Pipeline")
-st.caption("AMiner DBLP-Citation-network V13 Â· local data engineering + graph analytics workbench")
+st.caption("AMiner DBLP-Citation-network V13 · local data engineering + graph analytics workbench")
 
 overview_tab, demo_tab, inspect_tab, normalize_tab, filter_tab, graph_tab, analyze_tab, insights_tab, quality_tab, history_tab, artifacts_tab = st.tabs(
     [
@@ -817,7 +822,7 @@ with quality_tab:
         with c1:
             metric_card("Rows", str(summary.get("row_count", "")), "Total records")
         with c2:
-            metric_card("Year range", f"{summary.get('min_year', '')} â†’ {summary.get('max_year', '')}", "Observed years")
+            metric_card("Year range", f"{summary.get('min_year', '')} → {summary.get('max_year', '')}", "Observed years")
         with c3:
             metric_card("Missing title", f"{round(summary.get('missing_title_ratio', 0) * 100, 2)}%", "Empty or null titles")
         with c4:
@@ -858,3 +863,7 @@ with artifacts_tab:
         render_files_list("Export files", list_relative_files(EXPORTS_DIR), limit=200)
         render_files_list("Quality files", list_relative_files(QUALITY_DIR), limit=100)
         render_files_list("Manifest files", list_relative_files(MANIFEST_PATH.parent), limit=50)
+'@ | Set-Content "app\streamlit_app.py" -Encoding UTF8
+
+Write-Host "V7.1 UI stabilization bootstrap completed."
+Write-Host "Updated: app\streamlit_app.py"
