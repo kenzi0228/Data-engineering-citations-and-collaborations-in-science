@@ -7,6 +7,12 @@ from typing import Any
 
 import duckdb
 
+from citation_graphs.exceptions import (
+    InvalidConfigurationError,
+    MissingInputError,
+    ResourceAlreadyExistsError,
+)
+
 
 def _normalized_glob(input_dir: str | Path) -> str:
     return str(Path(input_dir) / "**" / "*.parquet")
@@ -17,6 +23,10 @@ def _escape_sql_string(value: str) -> str:
 
 
 def get_distinct_fos_values(input_dir: str | Path) -> list[str]:
+    input_dir = Path(input_dir)
+    if not input_dir.exists():
+        raise MissingInputError(f"Normalized input directory not found: {input_dir}")
+
     input_glob = _normalized_glob(input_dir)
     con = duckdb.connect(database=":memory:")
 
@@ -47,17 +57,19 @@ def build_where_clause(
 
     if mode == "year":
         if year is None:
-            raise ValueError("--year is required for mode=year")
+            raise InvalidConfigurationError("--year is required for mode=year")
         clauses.append(f"year_clean = {year}")
 
     elif mode == "range":
         if start_year is None or end_year is None:
-            raise ValueError("--start-year and --end-year are required for mode=range")
+            raise InvalidConfigurationError("--start-year and --end-year are required for mode=range")
+        if start_year > end_year:
+            raise InvalidConfigurationError("start_year must be <= end_year")
         clauses.append(f"year_clean BETWEEN {start_year} AND {end_year}")
 
     elif mode == "fos":
         if not fos_values:
-            raise ValueError("--fos-values is required for mode=fos")
+            raise InvalidConfigurationError("--fos-values is required for mode=fos")
 
         fos_subclauses = []
         for fos in fos_values:
@@ -69,9 +81,9 @@ def build_where_clause(
 
     elif mode == "year_fos":
         if year is None:
-            raise ValueError("--year is required for mode=year_fos")
+            raise InvalidConfigurationError("--year is required for mode=year_fos")
         if not fos_values:
-            raise ValueError("--fos-values is required for mode=year_fos")
+            raise InvalidConfigurationError("--fos-values is required for mode=year_fos")
 
         clauses.append(f"year_clean = {year}")
 
@@ -84,12 +96,9 @@ def build_where_clause(
         clauses.append("(" + " OR ".join(fos_subclauses) + ")")
 
     else:
-        raise ValueError("Unsupported mode")
+        raise InvalidConfigurationError(f"Unsupported mode: {mode}")
 
-    if not clauses:
-        return "1=1"
-
-    return " AND ".join(clauses)
+    return " AND ".join(clauses) if clauses else "1=1"
 
 
 def create_subset(
@@ -103,8 +112,22 @@ def create_subset(
     fos_values: list[str] | None = None,
     overwrite: bool = False,
 ) -> dict[str, Any]:
+    input_dir = Path(input_dir)
+    output_dir = Path(output_dir)
+
+    if not input_dir.exists():
+        raise MissingInputError(f"Normalized input directory not found: {input_dir}")
+
+    if not subset_name.strip():
+        raise InvalidConfigurationError("subset_name cannot be empty")
+
     input_glob = _normalized_glob(input_dir)
-    subset_dir = Path(output_dir) / subset_name
+    subset_dir = output_dir / subset_name
+
+    if subset_dir.exists() and not overwrite:
+        raise ResourceAlreadyExistsError(
+            f"A subset named '{subset_name}' already exists. Choose another name or enable overwrite."
+        )
 
     if overwrite and subset_dir.exists():
         shutil.rmtree(subset_dir)
@@ -134,7 +157,7 @@ def create_subset(
         "subset_name": subset_name,
         "mode": mode,
         "row_count": row_count,
-        "input_dir": str(Path(input_dir).resolve()),
+        "input_dir": str(input_dir.resolve()),
         "output_dir": str(subset_dir.resolve()),
         "where_clause": where_clause,
         "parameters": {
@@ -148,12 +171,10 @@ def create_subset(
     if row_count == 0:
         with (subset_dir / "_subset_summary.json").open("w", encoding="utf-8") as file:
             json.dump(summary, file, indent=4, ensure_ascii=False)
-
         con.close()
         return summary
 
     export_path = subset_dir / "data.parquet"
-
     export_query = f"""
         COPY (
             {source_query}
@@ -161,7 +182,6 @@ def create_subset(
         TO '{export_path}'
         (FORMAT PARQUET)
     """
-
     con.execute(export_query)
 
     preview_query = f"""

@@ -1,0 +1,8 @@
+{
+    "source_parquet": "C:\\Users\\KenziLali\\Desktop\\Data-engineering-citations-and-collaborations-in-science\\data\\processed\\subsets\\year_2020\\data.parquet",
+    "sample_parquet": "C:\\Users\\KenziLali\\Desktop\\Data-engineering-citations-and-collaborations-in-science\\data\\sample\\demo_subset_2020.parquet",
+    "row_limit_requested": 1000,
+    "row_count": 1000,
+    "min_year": 2020,
+    "max_year": 2020
+}

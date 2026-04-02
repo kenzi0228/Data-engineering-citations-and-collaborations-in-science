@@ -27,12 +27,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--year", type=int, help="Year value")
     parser.add_argument("--start-year", type=int, help="Start year")
     parser.add_argument("--end-year", type=int, help="End year")
-    parser.add_argument(
-        "--fos-values",
-        nargs="*",
-        default=[],
-        help="Exact Field of Study values to match",
-    )
+    parser.add_argument("--fos-values", nargs="*", default=[], help="Exact Field of Study values to match")
     parser.add_argument("--overwrite", action="store_true", help="Overwrite existing subset directory")
     return parser.parse_args()
 

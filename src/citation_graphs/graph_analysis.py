@@ -8,8 +8,13 @@ from typing import Any
 import community as community_louvain
 import networkx as nx
 
+from citation_graphs.exceptions import MissingInputError
+
 
 def load_graph(file_path: str | Path) -> nx.Graph:
+    file_path = Path(file_path)
+    if not file_path.exists():
+        raise MissingInputError(f"Graph file not found: {file_path}")
     return nx.read_gexf(file_path)
 
 
@@ -30,7 +35,6 @@ def get_largest_component(graph: nx.Graph) -> nx.Graph:
 def approximate_diameter(graph: nx.Graph, sample_size: int = 25, seed: int = 42) -> int | None:
     if graph.number_of_nodes() == 0:
         return None
-
     if graph.number_of_nodes() == 1:
         return 0
 
@@ -85,21 +89,38 @@ def get_graph_summary(
     return summary
 
 
-def _top_scores(scores: dict[Any, float], top_n: int) -> list[dict[str, Any]]:
-    return [
-        {"node_id": str(node_id), "score": float(score)}
-        for node_id, score in sorted(scores.items(), key=lambda item: item[1], reverse=True)[:top_n]
-    ]
+def _node_context(graph: nx.Graph, node_id: Any) -> dict[str, Any]:
+    attrs = dict(graph.nodes[node_id])
+    return {
+        "node_id": str(node_id),
+        "display_name": attrs.get("display_name", str(node_id)),
+        "details": attrs,
+    }
+
+
+def _top_scores(scores: dict[Any, float], graph: nx.Graph, top_n: int) -> list[dict[str, Any]]:
+    rows = []
+    for node_id, score in sorted(scores.items(), key=lambda item: item[1], reverse=True)[:top_n]:
+        node_info = _node_context(graph, node_id)
+        rows.append(
+            {
+                "node_id": str(node_id),
+                "display_name": node_info["display_name"],
+                "score": float(score),
+                "details": node_info["details"],
+            }
+        )
+    return rows
 
 
 def get_top_degree_centrality(graph: nx.Graph, top_n: int = 10) -> list[dict[str, Any]]:
     scores = nx.degree_centrality(graph)
-    return _top_scores(scores, top_n)
+    return _top_scores(scores, graph, top_n)
 
 
 def get_top_closeness_centrality(graph: nx.Graph, top_n: int = 10) -> list[dict[str, Any]]:
     scores = nx.closeness_centrality(graph)
-    return _top_scores(scores, top_n)
+    return _top_scores(scores, graph, top_n)
 
 
 def get_top_betweenness_centrality(
@@ -116,7 +137,7 @@ def get_top_betweenness_centrality(
     else:
         scores = nx.betweenness_centrality(graph)
 
-    return _top_scores(scores, top_n)
+    return _top_scores(scores, graph, top_n)
 
 
 def pagerank_power_iteration(
@@ -137,7 +158,6 @@ def pagerank_power_iteration(
 
     for _ in range(max_iter):
         new_ranks = {node: (1.0 - alpha) / n for node in nodes}
-
         dangling_sum = alpha * sum(ranks[node] for node in nodes if out_degree[node] == 0) / n
 
         for node in nodes:
@@ -165,7 +185,7 @@ def get_top_pagerank(graph: nx.Graph, top_n: int = 10) -> list[dict[str, Any]]:
         return []
 
     scores = pagerank_power_iteration(graph)
-    return _top_scores(scores, top_n)
+    return _top_scores(scores, graph, top_n)
 
 
 def detect_communities(graph: nx.Graph, top_n: int = 10) -> dict[str, Any]:
@@ -184,11 +204,7 @@ def detect_communities(graph: nx.Graph, top_n: int = 10) -> dict[str, Any]:
     for _, community_id in partition.items():
         community_sizes[community_id] = community_sizes.get(community_id, 0) + 1
 
-    largest_communities = sorted(
-        community_sizes.items(),
-        key=lambda item: item[1],
-        reverse=True
-    )[:top_n]
+    largest_communities = sorted(community_sizes.items(), key=lambda item: item[1], reverse=True)[:top_n]
 
     return {
         "num_communities": len(community_sizes),
@@ -229,6 +245,13 @@ def analyze_graph(
         },
         "pagerank": get_top_pagerank(graph, top_n=top_n),
         "communities": detect_communities(graph, top_n=top_n),
+        "node_details_index": {
+            str(node_id): {
+                "display_name": attrs.get("display_name", str(node_id)),
+                "details": dict(attrs),
+            }
+            for node_id, attrs in graph.nodes(data=True)
+        },
     }
 
 

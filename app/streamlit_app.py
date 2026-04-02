@@ -15,6 +15,12 @@ SRC_PATH = PROJECT_ROOT / "src"
 if str(SRC_PATH) not in sys.path:
     sys.path.insert(0, str(SRC_PATH))
 
+from citation_graphs.exceptions import (
+    InvalidConfigurationError,
+    MissingInputError,
+    PipelineError,
+    ResourceAlreadyExistsError,
+)
 from citation_graphs.fos_index import load_fos_index
 
 PYTHON_EXECUTABLE = sys.executable
@@ -25,8 +31,11 @@ NORMALIZED_DIR = PROJECT_ROOT / "data" / "interim" / "normalized"
 SUBSETS_DIR = PROJECT_ROOT / "data" / "processed" / "subsets"
 GRAPHS_DIR = PROJECT_ROOT / "outputs" / "graphs"
 METRICS_DIR = PROJECT_ROOT / "outputs" / "metrics"
-FOS_INDEX_PATH = PROJECT_ROOT / "data" / "reference" / "fos_index.json"
 EXPORTS_DIR = PROJECT_ROOT / "outputs" / "exports"
+FOS_INDEX_PATH = PROJECT_ROOT / "data" / "reference" / "fos_index.json"
+SAMPLE_DIR = PROJECT_ROOT / "data" / "sample"
+SAMPLE_PARQUET = SAMPLE_DIR / "demo_subset_2020.parquet"
+SAMPLE_METADATA = SAMPLE_DIR / "demo_subset_2020_metadata.json"
 
 
 def run_command(command: list[str]) -> tuple[bool, str]:
@@ -164,7 +173,18 @@ def render_table_from_list(title: str, rows: list[dict[str, Any]]) -> None:
     if not rows:
         st.info("No rows available.")
         return
-    st.dataframe(pd.DataFrame(rows), use_container_width=True)
+
+    df = pd.DataFrame(rows)
+    if "details" in df.columns:
+        df = df.drop(columns=["details"])
+    st.dataframe(df, use_container_width=True)
+
+
+def raise_ui_error(message: str, category: str = "error") -> None:
+    if category == "warning":
+        st.warning(message)
+    else:
+        st.error(message)
 
 
 st.set_page_config(
@@ -181,20 +201,11 @@ with st.sidebar:
     st.write(f"**Raw**: `{RAW_DATASET_PATH}`")
     st.write(f"**Normalized**: `{NORMALIZED_DIR}`")
     st.write(f"**Subsets**: `{SUBSETS_DIR}`")
+    st.write(f"**Sample**: `{SAMPLE_PARQUET}`")
     st.write(f"**Graphs**: `{GRAPHS_DIR}`")
     st.write(f"**Metrics**: `{METRICS_DIR}`")
     st.write(f"**Exports**: `{EXPORTS_DIR}`")
     st.write(f"**FOS index**: `{FOS_INDEX_PATH}`")
-
-    st.markdown("---")
-    st.header("Status")
-    st.write("Raw dataset:", status_text(file_exists(RAW_DATASET_PATH)))
-    st.write("Inspection:", status_text(file_exists(INSPECTION_DIR / "raw_profile.json")))
-    st.write("Normalization:", status_text(file_exists(NORMALIZED_DIR / "_normalization_summary.json")))
-    st.write("FOS index:", status_text(file_exists(FOS_INDEX_PATH)))
-    st.write("Subsets:", status_text(len(list_subset_dirs()) > 0))
-    st.write("Graphs:", status_text(len(list_graph_summaries()) > 0))
-    st.write("Metrics:", status_text(len(list_metric_jsons()) > 0))
 
 overview_tab, demo_tab, inspect_tab, normalize_tab, filter_tab, graph_tab, analyze_tab, insights_tab, artifacts_tab = st.tabs(
     [
@@ -212,7 +223,6 @@ overview_tab, demo_tab, inspect_tab, normalize_tab, filter_tab, graph_tab, analy
 
 with overview_tab:
     section_header("Pipeline Overview", "High-level status of each stage and latest outputs.")
-
     c1, c2, c3, c4, c5, c6 = st.columns(6)
     with c1:
         metric_card("Raw dataset", status_text(file_exists(RAW_DATASET_PATH)), f"{round(RAW_DATASET_PATH.stat().st_size / (1024**3), 2)} GB" if RAW_DATASET_PATH.exists() else "Dataset not found")
@@ -223,8 +233,7 @@ with overview_tab:
     with c4:
         metric_card("FOS index", status_text(file_exists(FOS_INDEX_PATH)), "Cached exact FOS values")
     with c5:
-        subsets = list_subset_dirs()
-        metric_card("Subsets", str(len(subsets)), "Filtered datasets available")
+        metric_card("Sample dataset", status_text(file_exists(SAMPLE_PARQUET)), "Versioned quick demo source")
     with c6:
         metric_card("Graphs", str(len(list_graph_summaries())), "Graph summary files")
 
@@ -233,18 +242,17 @@ with overview_tab:
     with left:
         render_json_card("Latest inspection profile", read_json_if_exists(INSPECTION_DIR / "raw_profile.json"))
     with right:
-        render_json_card("Latest normalization summary", read_json_if_exists(NORMALIZED_DIR / "_normalization_summary.json"))
+        render_json_card("Sample metadata", read_json_if_exists(SAMPLE_METADATA))
 
 with demo_tab:
-    section_header("Demo Workflow", "Run a short end-to-end demo without typing paths manually.")
+    section_header("Demo Workflow", "Create and use a small versioned sample dataset for quick testing.")
 
-    demo_subset_name = st.text_input("Demo subset name", value="year_2020_demo")
-    demo_graph_type = st.selectbox("Demo graph type", ["citation", "collaboration"], key="demo_graph_type")
-    demo_limit = st.number_input("Demo graph record limit", min_value=100, max_value=50000, value=2000, step=100)
+    sample_source_subset = st.text_input("Source subset parquet for sample extraction", value=str(SUBSETS_DIR / "year_2020" / "data.parquet"))
+    sample_row_limit = st.number_input("Sample row limit", min_value=100, max_value=10000, value=1000, step=100)
 
-    c1, c2, c3, c4 = st.columns(4)
+    col1, col2, col3, col4 = st.columns(4)
 
-    with c1:
+    with col1:
         if st.button("1. Refresh FOS index", use_container_width=True):
             command = [
                 PYTHON_EXECUTABLE,
@@ -262,62 +270,58 @@ with demo_tab:
             else:
                 st.error("Refresh failed.")
 
-    with c2:
-        if st.button("2. Create demo subset", use_container_width=True):
+    with col2:
+        if st.button("2. Build sample parquet", use_container_width=True):
             command = [
                 PYTHON_EXECUTABLE,
-                "scripts/filter_dataset.py",
+                "scripts/create_sample_dataset.py",
                 "--input",
-                str(NORMALIZED_DIR),
+                sample_source_subset,
                 "--output",
-                str(SUBSETS_DIR),
-                "--mode",
-                "year",
-                "--year",
-                "2020",
-                "--subset-name",
-                demo_subset_name,
+                str(SAMPLE_PARQUET),
+                "--metadata",
+                str(SAMPLE_METADATA),
+                "--row-limit",
+                str(sample_row_limit),
+            ]
+            success, output = run_command(command)
+            st.code(output)
+            if success:
+                st.success("Sample parquet created.")
+            else:
+                st.error("Sample extraction failed.")
+
+    with col3:
+        if st.button("3. Build sample graph", use_container_width=True):
+            command = [
+                PYTHON_EXECUTABLE,
+                "scripts/build_graph.py",
+                "--input",
+                str(SAMPLE_PARQUET),
+                "--output",
+                str(GRAPHS_DIR),
+                "--graph-type",
+                "citation",
+                "--graph-name",
+                "sample_demo",
                 "--overwrite",
             ]
             success, output = run_command(command)
             st.code(output)
             if success:
-                st.success("Demo subset created.")
+                st.success("Sample graph built.")
             else:
-                st.error("Subset creation failed.")
+                st.error("Sample graph build failed.")
 
-    with c3:
-        if st.button("3. Build demo graph", use_container_width=True):
-            command = [
-                PYTHON_EXECUTABLE,
-                "scripts/build_graph.py",
-                "--input",
-                str(SUBSETS_DIR / demo_subset_name / "data.parquet"),
-                "--output",
-                str(GRAPHS_DIR),
-                "--graph-type",
-                demo_graph_type,
-                "--graph-name",
-                demo_subset_name,
-                "--limit",
-                str(demo_limit),
-            ]
-            success, output = run_command(command)
-            st.code(output)
-            if success:
-                st.success("Demo graph built.")
-            else:
-                st.error("Graph build failed.")
-
-    with c4:
-        if st.button("4. Analyze demo graph", use_container_width=True):
+    with col4:
+        if st.button("4. Analyze sample graph", use_container_width=True):
             command = [
                 PYTHON_EXECUTABLE,
                 "scripts/analyze_graph.py",
                 "--input",
-                str(GRAPHS_DIR / f"{demo_subset_name}_{demo_graph_type}.gexf"),
+                str(GRAPHS_DIR / "sample_demo_citation.gexf"),
                 "--output",
-                str(METRICS_DIR / f"{demo_subset_name}_{demo_graph_type}_analysis.json"),
+                str(METRICS_DIR / "sample_demo_citation_analysis.json"),
                 "--top-n",
                 "10",
                 "--betweenness-sample-k",
@@ -326,34 +330,23 @@ with demo_tab:
             success, output = run_command(command)
             st.code(output)
             if success:
-                st.success("Demo analysis completed.")
+                st.success("Sample analysis completed.")
             else:
-                st.error("Analysis failed.")
-
-    demo_summary = read_json_if_exists(SUBSETS_DIR / demo_subset_name / "_subset_summary.json")
-    demo_graph_summary = read_json_if_exists(GRAPHS_DIR / f"{demo_subset_name}_{demo_graph_type}_summary.json")
-    demo_analysis = read_json_if_exists(METRICS_DIR / f"{demo_subset_name}_{demo_graph_type}_analysis.json")
+                st.error("Sample analysis failed.")
 
     left, middle, right = st.columns(3)
     with left:
-        render_json_card("Demo subset summary", demo_summary)
+        render_json_card("Sample metadata", read_json_if_exists(SAMPLE_METADATA))
     with middle:
-        render_json_card("Demo graph summary", demo_graph_summary)
+        render_json_card("Sample graph summary", read_json_if_exists(GRAPHS_DIR / "sample_demo_citation_summary.json"))
     with right:
-        render_json_card("Demo analysis", demo_analysis)
+        render_json_card("Sample analysis", read_json_if_exists(METRICS_DIR / "sample_demo_citation_analysis.json"))
 
 with inspect_tab:
     section_header("Inspect Raw Dataset", "Sample the source file safely and profile its structure.")
     max_records = st.slider("Sample record count", min_value=1, max_value=20, value=3)
     if st.button("Run raw inspection", use_container_width=True):
-        command = [
-            PYTHON_EXECUTABLE,
-            "scripts/inspect_raw.py",
-            "--input",
-            str(RAW_DATASET_PATH),
-            "--max-records",
-            str(max_records),
-        ]
+        command = [PYTHON_EXECUTABLE, "scripts/inspect_raw.py", "--input", str(RAW_DATASET_PATH), "--max-records", str(max_records)]
         success, output = run_command(command)
         st.code(output)
         if success:
@@ -422,14 +415,7 @@ with filter_tab:
     refresh_col1, refresh_col2 = st.columns([1, 2])
     with refresh_col1:
         if st.button("Refresh FOS index", use_container_width=True):
-            command = [
-                PYTHON_EXECUTABLE,
-                "scripts/extract_fos_index.py",
-                "--input",
-                str(NORMALIZED_DIR),
-                "--output",
-                str(FOS_INDEX_PATH),
-            ]
+            command = [PYTHON_EXECUTABLE, "scripts/extract_fos_index.py", "--input", str(NORMALIZED_DIR), "--output", str(FOS_INDEX_PATH)]
             success, output = run_command(command)
             st.code(output)
             if success:
@@ -453,76 +439,66 @@ with filter_tab:
 
     if mode == "year":
         year = st.number_input("Year", min_value=1800, max_value=2026, value=2020)
+
     elif mode == "range":
         col1, col2 = st.columns(2)
         with col1:
             start_year = st.number_input("Start year", min_value=1800, max_value=2026, value=2018)
         with col2:
             end_year = st.number_input("End year", min_value=1800, max_value=2026, value=2021)
+
     elif mode == "fos":
-        selected_fos_values = st.multiselect(
-            "Fields of Study",
-            options=available_fos,
-            default=[],
-            placeholder="Type to search exact FOS values...",
-        )
+        selected_fos_values = st.multiselect("Fields of Study", options=available_fos, default=[], placeholder="Type to search exact FOS values...")
+
     elif mode == "year_fos":
         year = st.number_input("Year", min_value=1800, max_value=2026, value=2020)
-        selected_fos_values = st.multiselect(
-            "Fields of Study",
-            options=available_fos,
-            default=[],
-            placeholder="Type to search exact FOS values...",
-        )
+        selected_fos_values = st.multiselect("Fields of Study", options=available_fos, default=[], placeholder="Type to search exact FOS values...")
 
     overwrite_subset = st.checkbox("Overwrite subset directory", value=False)
 
-    if selected_fos_values:
-        st.markdown("#### Selected FOS")
-        st.write(selected_fos_values)
-
     if st.button("Create subset", use_container_width=True):
-        command = [
-            PYTHON_EXECUTABLE,
-            "scripts/filter_dataset.py",
-            "--input",
-            str(NORMALIZED_DIR),
-            "--output",
-            str(SUBSETS_DIR),
-            "--mode",
-            mode,
-            "--subset-name",
-            subset_name,
-        ]
-
-        if mode == "year":
-            command.extend(["--year", str(year)])
-        elif mode == "range":
-            command.extend(["--start-year", str(start_year), "--end-year", str(end_year)])
-        elif mode == "fos":
-            if selected_fos_values:
-                command.extend(["--fos-values", *selected_fos_values])
-        elif mode == "year_fos":
-            command.extend(["--year", str(year)])
-            if selected_fos_values:
-                command.extend(["--fos-values", *selected_fos_values])
-
-        if overwrite_subset:
-            command.append("--overwrite")
-
-        success, output = run_command(command)
-        st.code(output)
-        if success:
-            st.success("Subset creation completed.")
+        if not subset_name.strip():
+            raise_ui_error("Subset name cannot be empty.")
+        elif mode == "range" and start_year is not None and end_year is not None and start_year > end_year:
+            raise_ui_error("Start year must be less than or equal to end year.")
+        elif mode in ("fos", "year_fos") and not selected_fos_values:
+            raise_ui_error("Select at least one Field of Study.")
         else:
-            st.error("Subset creation failed.")
+            command = [
+                PYTHON_EXECUTABLE,
+                "scripts/filter_dataset.py",
+                "--input",
+                str(NORMALIZED_DIR),
+                "--output",
+                str(SUBSETS_DIR),
+                "--mode",
+                mode,
+                "--subset-name",
+                subset_name,
+            ]
+
+            if mode == "year":
+                command.extend(["--year", str(year)])
+            elif mode == "range":
+                command.extend(["--start-year", str(start_year), "--end-year", str(end_year)])
+            elif mode == "fos":
+                command.extend(["--fos-values", *selected_fos_values])
+            elif mode == "year_fos":
+                command.extend(["--year", str(year), "--fos-values", *selected_fos_values])
+
+            if overwrite_subset:
+                command.append("--overwrite")
+
+            success, output = run_command(command)
+            st.code(output)
+            if success:
+                st.success("Subset creation completed.")
+            else:
+                st.error("Subset creation failed.")
 
     selected_subset = st.selectbox("Existing subsets", options=existing_subset_names if existing_subset_names else ["<none>"], index=0)
     if selected_subset != "<none>":
-        render_json_card(
-            f"{selected_subset}/_subset_summary.json",
-            read_json_if_exists(SUBSETS_DIR / selected_subset / "_subset_summary.json"),
-        )
+        render_json_card(f"{selected_subset}/_subset_summary.json", read_json_if_exists(SUBSETS_DIR / selected_subset / "_subset_summary.json"))
 
 with graph_tab:
     section_header("Build Graph", "Create citation or collaboration graphs from an existing subset.")
@@ -533,10 +509,13 @@ with graph_tab:
     graph_type = st.selectbox("Graph type", ["citation", "collaboration"])
     graph_name = st.text_input("Graph name", value=selected_subset_name if selected_subset_name != "<none>" else "graph")
     limit_value = st.number_input("Limit records (0 = no limit)", min_value=0, max_value=1000000, value=5000)
+    overwrite_graph = st.checkbox("Overwrite graph outputs", value=False)
 
     if st.button("Build graph", use_container_width=True):
         if selected_subset_name == "<none>":
-            st.error("No subset available.")
+            raise_ui_error("No subset available.")
+        elif not graph_name.strip():
+            raise_ui_error("Graph name cannot be empty.")
         else:
             subset_parquet = SUBSETS_DIR / selected_subset_name / "data.parquet"
             command = [
@@ -553,6 +532,9 @@ with graph_tab:
             ]
             if limit_value > 0:
                 command.extend(["--limit", str(limit_value)])
+            if overwrite_graph:
+                command.append("--overwrite")
+
             success, output = run_command(command)
             st.code(output)
             if success:
@@ -584,7 +566,9 @@ with analyze_tab:
 
     if st.button("Run analysis", use_container_width=True):
         if selected_base == "<none>":
-            st.error("No graph available.")
+            raise_ui_error("No graph available.")
+        elif not graph_input.exists():
+            raise_ui_error(f"Graph file not found: {graph_input}")
         else:
             command = [
                 PYTHON_EXECUTABLE,
@@ -600,6 +584,7 @@ with analyze_tab:
             ]
             if exact_betweenness:
                 command.append("--exact-betweenness")
+
             success, output = run_command(command)
             st.code(output)
             if success:
@@ -610,19 +595,11 @@ with analyze_tab:
     render_json_card(analysis_output.name, read_json_if_exists(analysis_output))
 
 with insights_tab:
-    section_header("Graph Insights Dashboard", "Explore existing analysis results and export key rankings to CSV.")
+    section_header("Graph Insights Dashboard", "Explore analysis results, inspect nodes, and export rankings to CSV.")
 
     analysis_bases = extract_analysis_base_names()
-    selected_insight_base = st.selectbox(
-        "Choose analysis base name",
-        options=analysis_bases if analysis_bases else ["<none>"],
-        index=0,
-    )
-    selected_insight_type = st.selectbox(
-        "Analysis graph type",
-        ["citation", "collaboration"],
-        key="insight_graph_type",
-    )
+    selected_insight_base = st.selectbox("Choose analysis base name", options=analysis_bases if analysis_bases else ["<none>"], index=0)
+    selected_insight_type = st.selectbox("Analysis graph type", ["citation", "collaboration"], key="insight_graph_type")
 
     if selected_insight_base != "<none>":
         analysis_path = METRICS_DIR / f"{selected_insight_base}_{selected_insight_type}_analysis.json"
@@ -637,7 +614,7 @@ with insights_tab:
     with export_col1:
         if st.button("Export analysis CSV", use_container_width=True):
             if selected_insight_base == "<none>":
-                st.error("No analysis available.")
+                raise_ui_error("No analysis available.")
             else:
                 command = [
                     PYTHON_EXECUTABLE,
@@ -663,6 +640,7 @@ with insights_tab:
         degree = analysis.get("centralities", {}).get("degree", [])
         closeness = analysis.get("centralities", {}).get("closeness", [])
         betweenness = analysis.get("centralities", {}).get("betweenness", [])
+        node_details_index = analysis.get("node_details_index", {})
 
         c1, c2, c3, c4, c5 = st.columns(5)
         with c1:
@@ -691,10 +669,29 @@ with insights_tab:
         render_table_from_list("Largest Communities", largest_communities)
 
         if largest_communities:
-            community_df = pd.DataFrame(largest_communities)
-            community_df = community_df.set_index("community_id")
+            community_df = pd.DataFrame(largest_communities).set_index("community_id")
             st.markdown("#### Largest community sizes")
             st.bar_chart(community_df["size"])
+
+        st.markdown("---")
+        st.markdown("### Node Details Explorer")
+
+        detail_options = []
+        for section in [pagerank, degree, closeness, betweenness]:
+            for row in section:
+                display_name = row.get("display_name", row.get("node_id"))
+                node_id = row.get("node_id")
+                label = f"{display_name} | {node_id}"
+                if label not in detail_options:
+                    detail_options.append(label)
+
+        if detail_options:
+            selected_label = st.selectbox("Choose a ranked node", options=detail_options)
+            selected_node_id = selected_label.split(" | ")[-1]
+            selected_node_details = node_details_index.get(selected_node_id, {})
+            render_json_card("Node details", selected_node_details)
+        else:
+            st.info("No ranked nodes available.")
 
         export_files = list_relative_files(export_dir) if export_dir.exists() else []
         render_files_list("Exported CSV files", export_files, limit=50)
@@ -702,12 +699,13 @@ with insights_tab:
         st.info("No analysis file available for the selected graph.")
 
 with artifacts_tab:
-    section_header("Artifacts Explorer", "Browse generated files across inspection, subsets, graphs, metrics and exports.")
+    section_header("Artifacts Explorer", "Browse generated files across inspection, subsets, sample, graphs, metrics and exports.")
     c1, c2 = st.columns(2)
     with c1:
         render_files_list("Inspection files", list_relative_files(INSPECTION_DIR))
+        render_files_list("Sample files", list_relative_files(SAMPLE_DIR), limit=50)
         render_files_list("Graph files", list_relative_files(GRAPHS_DIR), limit=200)
-        render_files_list("Export files", list_relative_files(EXPORTS_DIR), limit=200)
     with c2:
         render_files_list("Metric files", list_relative_files(METRICS_DIR), limit=200)
+        render_files_list("Export files", list_relative_files(EXPORTS_DIR), limit=200)
         render_files_list("Subset files", list_relative_files(SUBSETS_DIR), limit=200)

@@ -25,6 +25,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--graph-name", required=True, help="Base name for generated graph files")
     parser.add_argument("--limit", type=int, help="Optional record limit for testing")
+    parser.add_argument("--overwrite", action="store_true", help="Overwrite graph outputs if they already exist")
     return parser.parse_args()
 
 
@@ -37,6 +38,7 @@ def main() -> None:
         graph_name=args.graph_name,
         graph_type=args.graph_type,
         limit=args.limit,
+        overwrite=args.overwrite,
     )
 
     print("Graph build completed.")

@@ -8,6 +8,11 @@ from typing import Any
 import duckdb
 import networkx as nx
 
+from citation_graphs.exceptions import (
+    InvalidConfigurationError,
+    MissingInputError,
+    ResourceAlreadyExistsError,
+)
 
 INVALID_XML_RE = re.compile(
     "[" +
@@ -25,28 +30,25 @@ def load_subset_records(
     limit: int | None = None,
 ) -> list[dict[str, Any]]:
     parquet_path = Path(parquet_path)
-    con = duckdb.connect(database=":memory:")
+    if not parquet_path.exists():
+        raise MissingInputError(f"Subset parquet not found: {parquet_path}")
 
+    con = duckdb.connect(database=":memory:")
     query = f"SELECT * FROM read_parquet('{parquet_path}')"
     if limit is not None:
         query += f" LIMIT {limit}"
-
     table = con.execute(query).fetch_arrow_table()
     con.close()
-
     return table.to_pylist()
 
 
 def _ensure_list(value: Any) -> list[Any]:
     if value is None:
         return []
-
     if isinstance(value, list):
         return value
-
     if isinstance(value, tuple):
         return list(value)
-
     if isinstance(value, str):
         stripped = value.strip()
         if stripped.startswith("[") and stripped.endswith("]"):
@@ -57,7 +59,6 @@ def _ensure_list(value: Any) -> list[Any]:
             except json.JSONDecodeError:
                 return []
         return []
-
     try:
         return list(value)
     except TypeError:
@@ -71,33 +72,26 @@ def _clean_xml_string(value: str) -> str:
 def _sanitize_gexf_value(value: Any) -> str:
     if value is None:
         return ""
-
     if isinstance(value, str):
         return _clean_xml_string(value)
-
     if isinstance(value, list):
         return _clean_xml_string(json.dumps(value, ensure_ascii=False))
-
     if isinstance(value, dict):
         return _clean_xml_string(json.dumps(value, ensure_ascii=False))
-
     return _clean_xml_string(str(value))
 
 
 def _sanitize_graph_for_gexf(graph: nx.Graph) -> nx.Graph:
     sanitized = graph.__class__()
-
     for node_id, attrs in graph.nodes(data=True):
         clean_node_id = _sanitize_gexf_value(node_id)
         clean_attrs = {key: _sanitize_gexf_value(value) for key, value in attrs.items()}
         sanitized.add_node(clean_node_id, **clean_attrs)
-
     for source, target, attrs in graph.edges(data=True):
         clean_source = _sanitize_gexf_value(source)
         clean_target = _sanitize_gexf_value(target)
         clean_attrs = {key: _sanitize_gexf_value(value) for key, value in attrs.items()}
         sanitized.add_edge(clean_source, clean_target, **clean_attrs)
-
     return sanitized
 
 
@@ -111,6 +105,8 @@ def build_citation_graph(records: list[dict[str, Any]]) -> nx.DiGraph:
 
         graph.add_node(
             str(paper_id),
+            display_name=record.get("title") or f"Paper {paper_id}",
+            node_type="publication",
             title=record.get("title"),
             year=record.get("year_clean"),
             n_citation=record.get("n_citation"),
@@ -138,6 +134,8 @@ def build_citation_graph(records: list[dict[str, Any]]) -> nx.DiGraph:
             if ref_id not in graph:
                 graph.add_node(
                     ref_id,
+                    display_name=f"Reference {ref_id}",
+                    node_type="publication_reference_only",
                     title="",
                     year="",
                     n_citation="",
@@ -170,7 +168,12 @@ def build_collaboration_graph(records: list[dict[str, Any]]) -> nx.Graph:
             author_name = str(author_name) if author_name is not None else ""
 
             if author_id not in graph:
-                graph.add_node(author_id, name=author_name)
+                graph.add_node(
+                    author_id,
+                    display_name=author_name or f"Author {author_id}",
+                    node_type="author",
+                    name=author_name,
+                )
 
             valid_authors.append((author_id, author_name))
 
@@ -202,12 +205,18 @@ def save_graph_outputs(
     output_dir: str | Path,
     graph_name: str,
     graph_type: str,
+    overwrite: bool = False,
 ) -> dict[str, Any]:
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
     gexf_path = output_dir / f"{graph_name}_{graph_type}.gexf"
     summary_path = output_dir / f"{graph_name}_{graph_type}_summary.json"
+
+    if (gexf_path.exists() or summary_path.exists()) and not overwrite:
+        raise ResourceAlreadyExistsError(
+            f"A graph named '{graph_name}_{graph_type}' already exists. Choose another name or enable overwrite."
+        )
 
     sanitized_graph = _sanitize_graph_for_gexf(graph)
     nx.write_gexf(sanitized_graph, gexf_path)
@@ -227,7 +236,11 @@ def build_graph_from_subset(
     graph_name: str,
     graph_type: str,
     limit: int | None = None,
+    overwrite: bool = False,
 ) -> dict[str, Any]:
+    if not graph_name.strip():
+        raise InvalidConfigurationError("graph_name cannot be empty")
+
     records = load_subset_records(parquet_path, limit=limit)
 
     if graph_type == "citation":
@@ -235,13 +248,14 @@ def build_graph_from_subset(
     elif graph_type == "collaboration":
         graph = build_collaboration_graph(records)
     else:
-        raise ValueError("graph_type must be 'citation' or 'collaboration'")
+        raise InvalidConfigurationError("graph_type must be 'citation' or 'collaboration'")
 
     summary = save_graph_outputs(
         graph=graph,
         output_dir=output_dir,
         graph_name=graph_name,
         graph_type=graph_type,
+        overwrite=overwrite,
     )
 
     summary["source_parquet"] = str(Path(parquet_path).resolve())
