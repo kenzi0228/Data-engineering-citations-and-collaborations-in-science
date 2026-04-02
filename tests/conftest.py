@@ -21,13 +21,13 @@ def fixture_dir() -> Path:
 
 @pytest.fixture
 def mini_records(fixture_dir: Path) -> list[dict]:
-    return json.loads((fixture_dir / "mini_records.json").read_text(encoding="utf-8"))
+    return json.loads((fixture_dir / "mini_records.json").read_text(encoding="utf-8-sig"))
 
 
 @pytest.fixture
 def mini_parquet(tmp_path: Path, mini_records: list[dict]) -> Path:
     json_path = tmp_path / "mini_records.json"
-    json_path.write_text(json.dumps(mini_records), encoding="utf-8")
+    json_path.write_text(json.dumps(mini_records, ensure_ascii=False), encoding="utf-8")
 
     parquet_path = tmp_path / "mini_subset.parquet"
     con = duckdb.connect(database=":memory:")

@@ -14,7 +14,7 @@ def test_build_analysis_markdown_report() -> None:
         "communities": {"num_communities": 2, "largest_communities": []},
     }
     markdown = build_analysis_markdown_report("demo_analysis", analysis)
-    assert "# Graph Analysis Report â€” demo_analysis" in markdown
+    assert "# Graph Analysis Report - demo_analysis" in markdown
     assert "## Executive Summary" in markdown
 
 

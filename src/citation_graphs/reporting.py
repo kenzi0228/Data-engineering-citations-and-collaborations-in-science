@@ -1,6 +1,6 @@
 ﻿from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -39,7 +39,7 @@ def build_analysis_markdown_report(
     lines: list[str] = []
     lines.append(f"# Graph Analysis Report - {analysis_name}")
     lines.append("")
-    lines.append(f"_Generated on {datetime.utcnow().isoformat()} UTC_")
+    lines.append(f"_Generated on {datetime.now(timezone.utc).isoformat()}_")
     lines.append("")
     lines.append("## Executive Summary")
     lines.append("")
