@@ -275,8 +275,8 @@ A Streamlit app provides a lightweight interface for:
 ├── pyproject.toml
 ├── README.md
 └── requirements.txt
-```
 
+```
 
 ---
 
