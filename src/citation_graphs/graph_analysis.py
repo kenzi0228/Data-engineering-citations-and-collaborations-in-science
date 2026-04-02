@@ -89,11 +89,28 @@ def get_graph_summary(
     return summary
 
 
+def _resolve_display_name(node_id: Any, attrs: dict[str, Any]) -> str:
+    candidates = [
+        attrs.get("display_name"),
+        attrs.get("title"),
+        attrs.get("name"),
+    ]
+
+    for candidate in candidates:
+        if candidate is None:
+            continue
+        candidate = str(candidate).strip()
+        if candidate and candidate.lower() not in {"none", "nan"}:
+            return candidate
+
+    return str(node_id)
+
+
 def _node_context(graph: nx.Graph, node_id: Any) -> dict[str, Any]:
     attrs = dict(graph.nodes[node_id])
     return {
         "node_id": str(node_id),
-        "display_name": attrs.get("display_name", str(node_id)),
+        "display_name": _resolve_display_name(node_id, attrs),
         "details": attrs,
     }
 
@@ -247,7 +264,7 @@ def analyze_graph(
         "communities": detect_communities(graph, top_n=top_n),
         "node_details_index": {
             str(node_id): {
-                "display_name": attrs.get("display_name", str(node_id)),
+                "display_name": _resolve_display_name(node_id, dict(attrs)),
                 "details": dict(attrs),
             }
             for node_id, attrs in graph.nodes(data=True)
