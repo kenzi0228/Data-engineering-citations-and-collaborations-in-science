@@ -1,6 +1,6 @@
-# Graph Analysis Report â€” sample_demo_citation
+# Graph Analysis Report - sample_demo_citation
 
-_Generated on 2026-04-02T18:34:04.816400 UTC_
+_Generated on 2026-04-02T18:40:30.578153 UTC_
 
 ## Executive Summary
 

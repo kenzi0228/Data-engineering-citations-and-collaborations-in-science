@@ -37,7 +37,7 @@ def build_analysis_markdown_report(
     communities = analysis.get("communities", {})
 
     lines: list[str] = []
-    lines.append(f"# Graph Analysis Report â€” {analysis_name}")
+    lines.append(f"# Graph Analysis Report - {analysis_name}")
     lines.append("")
     lines.append(f"_Generated on {datetime.utcnow().isoformat()} UTC_")
     lines.append("")
