@@ -277,9 +277,9 @@ A Streamlit app provides a lightweight interface for:
 └── requirements.txt
 ```
 
+
 ---
 
-```md id="kt4f6n"
 ## Project Diagrams
 
 The repository includes three project diagrams under `docs/diagrams/` to document the workflow and architecture:
