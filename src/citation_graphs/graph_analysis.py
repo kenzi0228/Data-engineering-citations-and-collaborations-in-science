@@ -90,6 +90,18 @@ def get_graph_summary(
 
 
 def _resolve_display_name(node_id: Any, attrs: dict[str, Any]) -> str:
+    node_type = str(attrs.get("node_type", "")).lower().strip()
+
+    if node_type == "author":
+        name = str(attrs.get("name", "") or "").strip()
+        if name and name.lower() not in {"none", "nan"}:
+            return name
+
+    if node_type in {"publication", "publication_reference_only"}:
+        title = str(attrs.get("title", "") or "").strip()
+        if title and title.lower() not in {"none", "nan"}:
+            return title
+
     candidates = [
         attrs.get("display_name"),
         attrs.get("title"),
