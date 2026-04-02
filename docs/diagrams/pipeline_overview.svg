@@ -1,0 +1,107 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="820" viewBox="0 0 1500 820">
+<style>
+    .title { font: 700 24px Arial, sans-serif; fill: #1f2937; }
+    .subtitle { font: 400 13px Arial, sans-serif; fill: #4b5563; }
+    .box { fill: #f8fafc; stroke: #334155; stroke-width: 2; rx: 14; ry: 14; }
+    .box2 { fill: #eef6ff; stroke: #1d4ed8; stroke-width: 2; rx: 14; ry: 14; }
+    .box3 { fill: #f0fdf4; stroke: #15803d; stroke-width: 2; rx: 14; ry: 14; }
+    .box4 { fill: #fff7ed; stroke: #c2410c; stroke-width: 2; rx: 14; ry: 14; }
+    .small { font: 600 16px Arial, sans-serif; fill: #111827; }
+    .body { font: 400 13px Arial, sans-serif; fill: #374151; }
+    .mono { font: 400 12px 'Courier New', monospace; fill: #374151; }
+    .arrow { stroke: #475569; stroke-width: 2.6; fill: none; marker-end: url(#arrow); }
+    .arrow2 { stroke: #1d4ed8; stroke-width: 2.6; fill: none; marker-end: url(#arrowBlue); }
+</style>
+<defs>
+  <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+    <path d="M0,0 L0,6 L9,3 z" fill="#475569"/>
+  </marker>
+  <marker id="arrowBlue" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+    <path d="M0,0 L0,6 L9,3 z" fill="#1d4ed8"/>
+  </marker>
+</defs>
+
+<text x="40" y="45" class="title">Scientific Graph Analytics Pipeline</text>
+<text x="40" y="72" class="subtitle">End-to-end workflow from raw AMiner data to subsets, graphs, analytics, reports and interactive exploration.</text>
+
+<rect x="50" y="130" width="240" height="120" class="box"/>
+<text x="68" y="158" class="small">1. Raw Dataset</text>
+<text x="68" y="178" class="body">AMiner DBLP Citation Network V13</text>
+<text x="68" y="196" class="body">Large non-standard JSON source</text>
+<text x="68" y="214" class="body">Stored locally under data/raw/</text>
+
+
+<rect x="350" y="130" width="240" height="120" class="box2"/>
+<text x="368" y="158" class="small">2. Inspection</text>
+<text x="368" y="178" class="body">inspect_raw.py</text>
+<text x="368" y="196" class="body">Schema profiling and sample extraction</text>
+<text x="368" y="214" class="body">Detect non-standard tokens safely</text>
+
+
+<rect x="650" y="130" width="260" height="120" class="box2"/>
+<text x="668" y="158" class="small">3. Normalization</text>
+<text x="668" y="178" class="body">normalize_dataset.py</text>
+<text x="668" y="196" class="body">Repair + standardize records</text>
+<text x="668" y="214" class="body">Write partitioned parquet outputs</text>
+
+
+<rect x="970" y="130" width="250" height="120" class="box2"/>
+<text x="988" y="158" class="small">4. Reference Assets</text>
+<text x="988" y="178" class="body">extract_fos_index.py</text>
+<text x="988" y="196" class="body">Field-of-study cache/index</text>
+<text x="988" y="214" class="body">Improves filtering UX</text>
+
+
+<rect x="230" y="330" width="250" height="125" class="box3"/>
+<text x="248" y="358" class="small">5. Subset Creation</text>
+<text x="248" y="378" class="body">filter_dataset.py</text>
+<text x="248" y="396" class="body">Year / range / FOS filtering</text>
+<text x="248" y="414" class="body">Produces focused parquet subsets</text>
+
+
+<rect x="560" y="330" width="250" height="125" class="box3"/>
+<text x="578" y="358" class="small">6. Sample Creation</text>
+<text x="578" y="378" class="body">create_sample_dataset.py</text>
+<text x="578" y="396" class="body">Small reproducible parquet demo</text>
+<text x="578" y="414" class="body">Fast local experimentation</text>
+
+
+<rect x="890" y="330" width="260" height="125" class="box3"/>
+<text x="908" y="358" class="small">7. Graph Building</text>
+<text x="908" y="378" class="body">build_graph.py</text>
+<text x="908" y="396" class="body">Citation graph (directed)</text>
+<text x="908" y="414" class="body">Collaboration graph (undirected)</text>
+
+
+<rect x="230" y="545" width="250" height="125" class="box4"/>
+<text x="248" y="573" class="small">8. Graph Analysis</text>
+<text x="248" y="593" class="body">analyze_graph.py</text>
+<text x="248" y="611" class="body">Centralities, PageRank</text>
+<text x="248" y="629" class="body">Communities, diameter, summaries</text>
+
+
+<rect x="560" y="545" width="250" height="125" class="box4"/>
+<text x="578" y="573" class="small">9. Export Layer</text>
+<text x="578" y="593" class="body">export_analysis_csv.py</text>
+<text x="578" y="611" class="body">export_analysis_report.py</text>
+<text x="578" y="629" class="body">CSV + Markdown analytical outputs</text>
+
+
+<rect x="890" y="545" width="310" height="125" class="box4"/>
+<text x="908" y="573" class="small">10. Interactive App</text>
+<text x="908" y="593" class="body">Streamlit orchestration layer</text>
+<text x="908" y="611" class="body">Demo workflow, compare, quality</text>
+<text x="908" y="629" class="body">Insights, report preview, history</text>
+
+<line x1="290" y1="190" x2="350" y2="190" class="arrow"/>
+<line x1="590" y1="190" x2="650" y2="190" class="arrow"/>
+<line x1="910" y1="190" x2="970" y2="190" class="arrow"/>
+<line x1="780" y1="250" x2="780" y2="330" class="arrow"/>
+<line x1="475" y1="250" x2="475" y2="330" class="arrow"/>
+<line x1="1040" y1="250" x2="1040" y2="330" class="arrow"/>
+<line x1="355" y1="455" x2="355" y2="545" class="arrow"/>
+<line x1="685" y1="455" x2="685" y2="545" class="arrow"/>
+<line x1="1020" y1="455" x2="1020" y2="545" class="arrow"/>
+<line x1="480" y1="605" x2="560" y2="605" class="arrow2"/>
+<line x1="810" y1="605" x2="890" y2="605" class="arrow2"/>
+</svg>

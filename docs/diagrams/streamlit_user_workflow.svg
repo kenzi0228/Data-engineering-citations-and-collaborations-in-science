@@ -1,0 +1,96 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="760" viewBox="0 0 1500 760">
+<style>
+    .title { font: 700 24px Arial, sans-serif; fill: #1f2937; }
+    .subtitle { font: 400 13px Arial, sans-serif; fill: #4b5563; }
+    .box { fill: #f8fafc; stroke: #334155; stroke-width: 2; rx: 14; ry: 14; }
+    .box2 { fill: #eef6ff; stroke: #1d4ed8; stroke-width: 2; rx: 14; ry: 14; }
+    .box3 { fill: #f0fdf4; stroke: #15803d; stroke-width: 2; rx: 14; ry: 14; }
+    .box4 { fill: #fff7ed; stroke: #c2410c; stroke-width: 2; rx: 14; ry: 14; }
+    .small { font: 600 16px Arial, sans-serif; fill: #111827; }
+    .body { font: 400 13px Arial, sans-serif; fill: #374151; }
+    .mono { font: 400 12px 'Courier New', monospace; fill: #374151; }
+    .arrow { stroke: #475569; stroke-width: 2.6; fill: none; marker-end: url(#arrow); }
+    .arrow2 { stroke: #1d4ed8; stroke-width: 2.6; fill: none; marker-end: url(#arrowBlue); }
+</style>
+<defs>
+  <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+    <path d="M0,0 L0,6 L9,3 z" fill="#475569"/>
+  </marker>
+  <marker id="arrowBlue" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+    <path d="M0,0 L0,6 L9,3 z" fill="#1d4ed8"/>
+  </marker>
+</defs>
+
+<text x="40" y="45" class="title">User Workflow in the Streamlit App</text>
+<text x="40" y="72" class="subtitle">Recommended order of use for a complete local demonstration.</text>
+
+<rect x="55" y="150" width="180" height="105" class="box"/>
+<text x="73" y="178" class="small">Inspect Raw</text>
+<text x="73" y="198" class="body">Profile raw source</text>
+<text x="73" y="216" class="body">Preview samples</text>
+
+
+<rect x="270" y="150" width="180" height="105" class="box2"/>
+<text x="288" y="178" class="small">Normalize</text>
+<text x="288" y="198" class="body">Convert to parquet</text>
+<text x="288" y="216" class="body">Create partitions</text>
+
+
+<rect x="485" y="150" width="180" height="105" class="box3"/>
+<text x="503" y="178" class="small">Filter Subset</text>
+<text x="503" y="198" class="body">Select year / FOS</text>
+<text x="503" y="216" class="body">Produce focused dataset</text>
+
+
+<rect x="700" y="150" width="180" height="105" class="box4"/>
+<text x="718" y="178" class="small">Build Graph</text>
+<text x="718" y="198" class="body">Citation or collaboration</text>
+<text x="718" y="216" class="body">Generate GEXF + summary</text>
+
+
+<rect x="915" y="150" width="180" height="105" class="box2"/>
+<text x="933" y="178" class="small">Analyze</text>
+<text x="933" y="198" class="body">Compute metrics</text>
+<text x="933" y="216" class="body">Store analysis JSON</text>
+
+
+<rect x="1130" y="150" width="180" height="105" class="box3"/>
+<text x="1148" y="178" class="small">Insights</text>
+<text x="1148" y="198" class="body">Read rankings</text>
+<text x="1148" y="216" class="body">Inspect node details</text>
+
+
+<rect x="270" y="390" width="220" height="120" class="box4"/>
+<text x="288" y="418" class="small">Compare</text>
+<text x="288" y="438" class="body">Compare two analyses</text>
+<text x="288" y="456" class="body">Nodes, edges, density</text>
+<text x="288" y="474" class="body">Centrality overlap</text>
+
+
+<rect x="560" y="390" width="220" height="120" class="box2"/>
+<text x="578" y="418" class="small">Data Quality</text>
+<text x="578" y="438" class="body">Profile subsets or samples</text>
+<text x="578" y="456" class="body">Check missingness and top values</text>
+
+
+<rect x="850" y="390" width="220" height="120" class="box3"/>
+<text x="868" y="418" class="small">Reports</text>
+<text x="868" y="438" class="body">Export CSV / Markdown</text>
+<text x="868" y="456" class="body">Generate reusable deliverables</text>
+
+<line x1="235" y1="203" x2="270" y2="203" class="arrow"/>
+<line x1="450" y1="203" x2="485" y2="203" class="arrow"/>
+<line x1="665" y1="203" x2="700" y2="203" class="arrow"/>
+<line x1="880" y1="203" x2="915" y2="203" class="arrow"/>
+<line x1="1095" y1="203" x2="1130" y2="203" class="arrow"/>
+<line x1="1005" y1="255" x2="1005" y2="390" class="arrow2"/>
+<line x1="795" y1="255" x2="670" y2="390" class="arrow2"/>
+<line x1="1180" y1="255" x2="960" y2="390" class="arrow2"/>
+
+<rect x="1110" y="390" width="270" height="120" class="box"/>
+<text x="1128" y="418" class="small">Demo Mode</text>
+<text x="1128" y="438" class="body">Create or choose a sample</text>
+<text x="1128" y="456" class="body">Build demo graph</text>
+<text x="1128" y="474" class="body">Analyze and export report quickly</text>
+
+</svg>
