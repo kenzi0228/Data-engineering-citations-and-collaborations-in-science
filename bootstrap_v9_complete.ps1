@@ -1,4 +1,421 @@
-﻿from __future__ import annotations
+$ErrorActionPreference = "Stop"
+
+New-Item -ItemType Directory -Force -Path "src\citation_graphs" | Out-Null
+New-Item -ItemType Directory -Force -Path "scripts" | Out-Null
+New-Item -ItemType Directory -Force -Path "tests\fixtures" | Out-Null
+New-Item -ItemType Directory -Force -Path "outputs\reports" | Out-Null
+New-Item -ItemType Directory -Force -Path "app" | Out-Null
+
+@'
+from __future__ import annotations
+
+from datetime import datetime
+from pathlib import Path
+from typing import Any
+
+
+def _format_metric(label: str, value: Any) -> str:
+    return f"- **{label}**: {value}"
+
+
+def _table_from_rows(rows: list[dict[str, Any]], columns: list[str]) -> str:
+    if not rows:
+        return "_No data available._"
+
+    header = "| " + " | ".join(columns) + " |"
+    separator = "| " + " | ".join(["---"] * len(columns)) + " |"
+    body_lines = []
+
+    for row in rows:
+        values = []
+        for col in columns:
+            value = row.get(col, "")
+            values.append(str(value).replace("\n", " ").strip())
+        body_lines.append("| " + " | ".join(values) + " |")
+
+    return "\n".join([header, separator, *body_lines])
+
+
+def build_analysis_markdown_report(
+    analysis_name: str,
+    analysis: dict[str, Any],
+) -> str:
+    summary = analysis.get("summary", {})
+    centralities = analysis.get("centralities", {})
+    pagerank = analysis.get("pagerank", [])
+    communities = analysis.get("communities", {})
+
+    lines: list[str] = []
+    lines.append(f"# Graph Analysis Report — {analysis_name}")
+    lines.append("")
+    lines.append(f"_Generated on {datetime.utcnow().isoformat()} UTC_")
+    lines.append("")
+    lines.append("## Executive Summary")
+    lines.append("")
+    lines.append(_format_metric("Directed", summary.get("is_directed", "")))
+    lines.append(_format_metric("Nodes", summary.get("num_nodes", "")))
+    lines.append(_format_metric("Edges", summary.get("num_edges", "")))
+    lines.append(_format_metric("Density", summary.get("density", "")))
+    lines.append(_format_metric("Largest component nodes", summary.get("largest_component_nodes", "")))
+    lines.append(_format_metric("Largest component edges", summary.get("largest_component_edges", "")))
+    lines.append(_format_metric("Largest component diameter", summary.get("largest_component_diameter", "")))
+    lines.append(_format_metric("Diameter mode", summary.get("largest_component_diameter_mode", "")))
+    lines.append(_format_metric("Largest component average clustering", summary.get("largest_component_average_clustering", "")))
+    lines.append(_format_metric("Communities detected", communities.get("num_communities", "")))
+    lines.append("")
+
+    lines.append("## Top PageRank")
+    lines.append("")
+    lines.append(_table_from_rows(pagerank[:10], ["node_id", "display_name", "score"]))
+    lines.append("")
+
+    lines.append("## Top Degree Centrality")
+    lines.append("")
+    lines.append(_table_from_rows(centralities.get("degree", [])[:10], ["node_id", "display_name", "score"]))
+    lines.append("")
+
+    lines.append("## Top Closeness Centrality")
+    lines.append("")
+    lines.append(_table_from_rows(centralities.get("closeness", [])[:10], ["node_id", "display_name", "score"]))
+    lines.append("")
+
+    lines.append("## Top Betweenness Centrality")
+    lines.append("")
+    lines.append(_table_from_rows(centralities.get("betweenness", [])[:10], ["node_id", "display_name", "score"]))
+    lines.append("")
+
+    lines.append("## Largest Communities")
+    lines.append("")
+    lines.append(_table_from_rows(communities.get("largest_communities", [])[:10], ["community_id", "size"]))
+    lines.append("")
+
+    return "\n".join(lines)
+
+
+def export_analysis_markdown_report(
+    analysis_path: str | Path,
+    output_path: str | Path,
+    analysis_name: str | None = None,
+) -> dict[str, str]:
+    analysis_path = Path(analysis_path)
+    output_path = Path(output_path)
+
+    analysis = __import__("json").loads(analysis_path.read_text(encoding="utf-8"))
+    resolved_name = analysis_name or analysis_path.stem.replace("_analysis", "")
+    markdown = build_analysis_markdown_report(resolved_name, analysis)
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(markdown, encoding="utf-8")
+
+    return {
+        "analysis_path": str(analysis_path.resolve()),
+        "report_path": str(output_path.resolve()),
+        "analysis_name": resolved_name,
+    }
+'@ | Set-Content "src\citation_graphs\reporting.py" -Encoding UTF8
+
+@'
+from __future__ import annotations
+
+import argparse
+import sys
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+SRC_PATH = PROJECT_ROOT / "src"
+
+if str(SRC_PATH) not in sys.path:
+    sys.path.insert(0, str(SRC_PATH))
+
+from citation_graphs.reporting import export_analysis_markdown_report
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Export a graph analysis JSON file to a Markdown report.")
+    parser.add_argument("--input", required=True, help="Input analysis JSON path")
+    parser.add_argument("--output", required=True, help="Output Markdown report path")
+    parser.add_argument("--name", help="Optional custom analysis display name")
+    return parser.parse_args()
+
+
+def main() -> None:
+    args = parse_args()
+    result = export_analysis_markdown_report(
+        analysis_path=args.input,
+        output_path=args.output,
+        analysis_name=args.name,
+    )
+    print("Analysis report export completed.")
+    print(result)
+
+
+if __name__ == "__main__":
+    main()
+'@ | Set-Content "scripts\export_analysis_report.py" -Encoding UTF8
+
+@'
+[
+  {
+    "paper_id": "paper_1",
+    "title": "Graph Analytics for Science",
+    "year_clean": 2020,
+    "n_citation": 12,
+    "lang": "en",
+    "venue_name": "Journal A",
+    "fos": ["Data Science", "Graph Theory"],
+    "fos_count": 2,
+    "references": ["paper_2"],
+    "reference_count": 1,
+    "author_ids": ["author_1", "author_2"],
+    "author_names": ["Alice Doe", "Bob Ray"],
+    "author_count": 2
+  },
+  {
+    "paper_id": "paper_2",
+    "title": "Network Methods in Research",
+    "year_clean": 2019,
+    "n_citation": 8,
+    "lang": "en",
+    "venue_name": "Conference B",
+    "fos": ["Network Science"],
+    "fos_count": 1,
+    "references": [],
+    "reference_count": 0,
+    "author_ids": ["author_2"],
+    "author_names": ["Bob Ray"],
+    "author_count": 1
+  },
+  {
+    "paper_id": "paper_3",
+    "title": "Applied Collaboration Networks",
+    "year_clean": 2020,
+    "n_citation": 5,
+    "lang": "en",
+    "venue_name": "Workshop C",
+    "fos": ["Data Science"],
+    "fos_count": 1,
+    "references": ["paper_1"],
+    "reference_count": 1,
+    "author_ids": ["author_1", "author_3"],
+    "author_names": ["Alice Doe", "Charlie Lin"],
+    "author_count": 2
+  }
+]
+'@ | Set-Content "tests\fixtures\mini_records.json" -Encoding UTF8
+
+@'
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import duckdb
+import pytest
+
+
+@pytest.fixture
+def fixture_dir() -> Path:
+    return Path(__file__).parent / "fixtures"
+
+
+@pytest.fixture
+def mini_records(fixture_dir: Path) -> list[dict]:
+    return json.loads((fixture_dir / "mini_records.json").read_text(encoding="utf-8"))
+
+
+@pytest.fixture
+def mini_parquet(tmp_path: Path, mini_records: list[dict]) -> Path:
+    json_path = tmp_path / "mini_records.json"
+    json_path.write_text(json.dumps(mini_records), encoding="utf-8")
+
+    parquet_path = tmp_path / "mini_subset.parquet"
+    con = duckdb.connect(database=":memory:")
+    con.execute(
+        f"""
+        COPY (
+            SELECT *
+            FROM read_json_auto('{json_path}')
+        )
+        TO '{parquet_path}'
+        (FORMAT PARQUET)
+        """
+    )
+    con.close()
+    return parquet_path
+'@ | Set-Content "tests\conftest.py" -Encoding UTF8
+
+@'
+from __future__ import annotations
+
+import duckdb
+
+from citation_graphs.filtering import build_where_clause
+
+
+def test_build_where_clause_year() -> None:
+    clause = build_where_clause(mode="year", year=2020)
+    assert clause == "year_clean = 2020"
+
+
+def test_build_where_clause_range() -> None:
+    clause = build_where_clause(mode="range", start_year=2018, end_year=2020)
+    assert clause == "year_clean BETWEEN 2018 AND 2020"
+
+
+def test_build_where_clause_fos() -> None:
+    clause = build_where_clause(mode="fos", fos_values=["Data Science", "Graph Theory"])
+    assert "lower(f) = 'data science'" in clause
+    assert "lower(f) = 'graph theory'" in clause
+
+
+def test_filter_query_on_fixture(mini_parquet) -> None:
+    con = duckdb.connect(database=":memory:")
+    rows = con.execute(
+        f"""
+        SELECT COUNT(*)
+        FROM read_parquet('{mini_parquet}')
+        WHERE year_clean = 2020
+        """
+    ).fetchone()[0]
+    con.close()
+
+    assert rows == 2
+'@ | Set-Content "tests\test_filtering.py" -Encoding UTF8
+
+@'
+from __future__ import annotations
+
+from citation_graphs.graph_builder import build_citation_graph, build_collaboration_graph
+
+
+def test_build_citation_graph(mini_records) -> None:
+    graph = build_citation_graph(mini_records)
+    assert graph.number_of_nodes() >= 3
+    assert graph.number_of_edges() >= 2
+
+
+def test_build_collaboration_graph(mini_records) -> None:
+    graph = build_collaboration_graph(mini_records)
+    assert graph.number_of_nodes() == 3
+    assert graph.number_of_edges() >= 2
+
+
+def test_citation_graph_has_title_label(mini_records) -> None:
+    graph = build_citation_graph(mini_records)
+    assert graph.nodes["paper_1"]["title"] == "Graph Analytics for Science"
+    assert graph.nodes["paper_1"]["display_name"] == "Graph Analytics for Science"
+
+
+def test_collaboration_graph_has_name_label(mini_records) -> None:
+    graph = build_collaboration_graph(mini_records)
+    assert graph.nodes["author_1"]["name"] == "Alice Doe"
+    assert graph.nodes["author_1"]["display_name"] == "Alice Doe"
+'@ | Set-Content "tests\test_graph_builder.py" -Encoding UTF8
+
+@'
+from __future__ import annotations
+
+from citation_graphs.graph_analysis import analyze_graph
+from citation_graphs.graph_builder import build_citation_graph, build_collaboration_graph
+
+
+def test_analyze_citation_graph_structure(mini_records) -> None:
+    graph = build_citation_graph(mini_records)
+    result = analyze_graph(graph, top_n=5, betweenness_sample_k=10)
+
+    assert "summary" in result
+    assert "centralities" in result
+    assert "pagerank" in result
+    assert "communities" in result
+    assert "node_details_index" in result
+
+
+def test_analyze_collaboration_graph_structure(mini_records) -> None:
+    graph = build_collaboration_graph(mini_records)
+    result = analyze_graph(graph, top_n=5, betweenness_sample_k=10)
+
+    assert isinstance(result["pagerank"], list)
+    assert isinstance(result["centralities"]["degree"], list)
+    assert isinstance(result["communities"]["largest_communities"], list)
+
+
+def test_display_name_priority_for_citation(mini_records) -> None:
+    graph = build_citation_graph(mini_records)
+    result = analyze_graph(graph, top_n=5, betweenness_sample_k=10)
+    details = result["node_details_index"]["paper_1"]
+    assert details["display_name"] == "Graph Analytics for Science"
+
+
+def test_display_name_priority_for_collaboration(mini_records) -> None:
+    graph = build_collaboration_graph(mini_records)
+    result = analyze_graph(graph, top_n=5, betweenness_sample_k=10)
+    details = result["node_details_index"]["author_1"]
+    assert details["display_name"] == "Alice Doe"
+'@ | Set-Content "tests\test_graph_analysis.py" -Encoding UTF8
+
+@'
+from __future__ import annotations
+
+from citation_graphs.data_quality import compute_data_quality_report
+
+
+def test_data_quality_report_structure(mini_parquet) -> None:
+    report = compute_data_quality_report(mini_parquet, top_n=5)
+
+    assert "summary" in report
+    assert "top_years" in report
+    assert "top_fos" in report
+
+    summary = report["summary"]
+    assert summary["row_count"] == 3
+    assert summary["min_year"] == 2019
+    assert summary["max_year"] == 2020
+'@ | Set-Content "tests\test_data_quality.py" -Encoding UTF8
+
+@'
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+from citation_graphs.reporting import build_analysis_markdown_report, export_analysis_markdown_report
+
+
+def test_build_analysis_markdown_report() -> None:
+    analysis = {
+        "summary": {"num_nodes": 10, "num_edges": 12, "density": 0.1},
+        "centralities": {"degree": [], "closeness": [], "betweenness": []},
+        "pagerank": [],
+        "communities": {"num_communities": 2, "largest_communities": []},
+    }
+    markdown = build_analysis_markdown_report("demo_analysis", analysis)
+    assert "# Graph Analysis Report — demo_analysis" in markdown
+    assert "## Executive Summary" in markdown
+
+
+def test_export_analysis_markdown_report(tmp_path: Path) -> None:
+    analysis_path = tmp_path / "analysis.json"
+    analysis_path.write_text(
+        json.dumps(
+            {
+                "summary": {"num_nodes": 10, "num_edges": 12, "density": 0.1},
+                "centralities": {"degree": [], "closeness": [], "betweenness": []},
+                "pagerank": [],
+                "communities": {"num_communities": 2, "largest_communities": []},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    output_path = tmp_path / "report.md"
+    result = export_analysis_markdown_report(analysis_path, output_path)
+
+    assert output_path.exists()
+    assert result["report_path"].endswith("report.md")
+'@ | Set-Content "tests\test_reporting.py" -Encoding UTF8
+
+@'
+from __future__ import annotations
 
 import json
 import subprocess
@@ -259,7 +676,7 @@ def comparison_dataframe(rows_a: list[dict[str, Any]], rows_b: list[dict[str, An
 
 st.set_page_config(
     page_title="Citation & Collaboration Graph Pipeline",
-    page_icon="ðŸ“Š",
+    page_icon="📊",
     layout="wide",
 )
 
@@ -849,3 +1266,18 @@ with artifacts_tab:
     with c2:
         render_files_list("Metric files", list_relative_files(METRICS_DIR, limit=30))
         render_files_list("Quality files", list_relative_files(QUALITY_DIR, limit=30))
+'@ | Set-Content "app\streamlit_app.py" -Encoding UTF8
+
+Write-Host "V9 bootstrap completed."
+Write-Host "Created:"
+Write-Host " - src\citation_graphs\reporting.py"
+Write-Host " - scripts\export_analysis_report.py"
+Write-Host " - tests\conftest.py"
+Write-Host " - tests\fixtures\mini_records.json"
+Write-Host " - tests\test_filtering.py"
+Write-Host " - tests\test_graph_builder.py"
+Write-Host " - tests\test_graph_analysis.py"
+Write-Host " - tests\test_data_quality.py"
+Write-Host " - tests\test_reporting.py"
+Write-Host "Updated:"
+Write-Host " - app\streamlit_app.py"

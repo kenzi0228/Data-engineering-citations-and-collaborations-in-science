@@ -1,0 +1,47 @@
+﻿[
+  {
+    "paper_id": "paper_1",
+    "title": "Graph Analytics for Science",
+    "year_clean": 2020,
+    "n_citation": 12,
+    "lang": "en",
+    "venue_name": "Journal A",
+    "fos": ["Data Science", "Graph Theory"],
+    "fos_count": 2,
+    "references": ["paper_2"],
+    "reference_count": 1,
+    "author_ids": ["author_1", "author_2"],
+    "author_names": ["Alice Doe", "Bob Ray"],
+    "author_count": 2
+  },
+  {
+    "paper_id": "paper_2",
+    "title": "Network Methods in Research",
+    "year_clean": 2019,
+    "n_citation": 8,
+    "lang": "en",
+    "venue_name": "Conference B",
+    "fos": ["Network Science"],
+    "fos_count": 1,
+    "references": [],
+    "reference_count": 0,
+    "author_ids": ["author_2"],
+    "author_names": ["Bob Ray"],
+    "author_count": 1
+  },
+  {
+    "paper_id": "paper_3",
+    "title": "Applied Collaboration Networks",
+    "year_clean": 2020,
+    "n_citation": 5,
+    "lang": "en",
+    "venue_name": "Workshop C",
+    "fos": ["Data Science"],
+    "fos_count": 1,
+    "references": ["paper_1"],
+    "reference_count": 1,
+    "author_ids": ["author_1", "author_3"],
+    "author_names": ["Alice Doe", "Charlie Lin"],
+    "author_count": 2
+  }
+]
