@@ -1,0 +1,96 @@
+{
+    "input_path": "C:\\Users\\KenziLali\\Desktop\\Data-engineering-citations-and-collaborations-in-science\\data\\interim\\normalized",
+    "summary": {
+        "row_count": 5354309,
+        "min_year": 1800,
+        "max_year": 2022,
+        "missing_title_ratio": 7.302529607461953e-05,
+        "zero_author_ratio": 0.00634629043635696,
+        "zero_reference_ratio": 0.25211040304173704,
+        "missing_lang_ratio": 0.11727862549583896
+    },
+    "top_years": [
+        {
+            "year": 2018,
+            "row_count": 356268
+        },
+        {
+            "year": 2019,
+            "row_count": 350991
+        },
+        {
+            "year": 2020,
+            "row_count": 337373
+        },
+        {
+            "year": 2017,
+            "row_count": 310063
+        },
+        {
+            "year": 2015,
+            "row_count": 302843
+        },
+        {
+            "year": 2014,
+            "row_count": 289868
+        },
+        {
+            "year": 2016,
+            "row_count": 283317
+        },
+        {
+            "year": 2013,
+            "row_count": 275101
+        },
+        {
+            "year": 2012,
+            "row_count": 256736
+        },
+        {
+            "year": 2011,
+            "row_count": 241021
+        }
+    ],
+    "top_fos": [
+        {
+            "fos_value": "Computer science",
+            "row_count": 3152625
+        },
+        {
+            "fos_value": "Artificial intelligence",
+            "row_count": 953033
+        },
+        {
+            "fos_value": "Mathematics",
+            "row_count": 845068
+        },
+        {
+            "fos_value": "Algorithm",
+            "row_count": 387218
+        },
+        {
+            "fos_value": "Engineering",
+            "row_count": 325129
+        },
+        {
+            "fos_value": "Computer vision",
+            "row_count": 306614
+        },
+        {
+            "fos_value": "Computer network",
+            "row_count": 300346
+        },
+        {
+            "fos_value": "Control theory",
+            "row_count": 259662
+        },
+        {
+            "fos_value": "Pattern recognition",
+            "row_count": 258485
+        },
+        {
+            "fos_value": "Mathematical optimization",
+            "row_count": 229650
+        }
+    ]
+}

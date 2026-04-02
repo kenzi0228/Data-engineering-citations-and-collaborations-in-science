@@ -77,13 +77,13 @@ def file_exists(path: Path) -> bool:
     return path.exists()
 
 
-def list_relative_files(directory: Path, suffix: str | None = None) -> list[Path]:
+def list_relative_files(directory: Path, suffix: str | None = None, limit: int = 100) -> list[Path]:
     if not directory.exists():
         return []
     files = [p for p in directory.rglob("*") if p.is_file()]
     if suffix:
         files = [p for p in files if p.suffix.lower() == suffix.lower()]
-    return sorted(files)
+    return sorted(files)[:limit]
 
 
 def list_subset_dirs() -> list[Path]:
@@ -108,12 +108,6 @@ def list_sample_parquets() -> list[Path]:
     if not SAMPLE_DIR.exists():
         return []
     return sorted(SAMPLE_DIR.glob("*.parquet"))
-
-
-def list_sample_metadata() -> list[Path]:
-    if not SAMPLE_DIR.exists():
-        return []
-    return sorted(SAMPLE_DIR.glob("*_metadata.json"))
 
 
 def extract_graph_base_names() -> list[str]:
@@ -147,38 +141,19 @@ def status_text(ok: bool) -> str:
     return "Ready" if ok else "Missing"
 
 
-def render_json_card(title: str, data: Any) -> None:
-    st.markdown(f"#### {title}")
-    if data is None:
-        st.info("No data available.")
-    else:
-        st.json(data)
-
-
-def render_files_list(title: str, files: list[Path], limit: int = 100) -> None:
-    st.markdown(f"#### {title}")
-    if not files:
-        st.info("No files found.")
-        return
-    display_lines = [str(p.relative_to(PROJECT_ROOT)) for p in files[:limit]]
-    st.code("\n".join(display_lines))
-    if len(files) > limit:
-        st.caption(f"Showing first {limit} files out of {len(files)}.")
-
-
 def metric_card(title: str, value: str, caption: str = "") -> None:
     st.markdown(
         f"""
         <div style="
             border:1px solid rgba(128,128,128,0.25);
             border-radius:16px;
-            padding:16px;
-            min-height:120px;
+            padding:14px;
+            min-height:110px;
             background: rgba(255,255,255,0.02);
         ">
             <div style="font-size:0.95rem; opacity:0.85;">{title}</div>
-            <div style="font-size:1.6rem; font-weight:700; margin-top:8px;">{value}</div>
-            <div style="font-size:0.85rem; opacity:0.7; margin-top:8px;">{caption}</div>
+            <div style="font-size:1.45rem; font-weight:700; margin-top:8px;">{value}</div>
+            <div style="font-size:0.82rem; opacity:0.7; margin-top:8px;">{caption}</div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -191,15 +166,59 @@ def section_header(title: str, description: str = "") -> None:
         st.caption(description)
 
 
-def render_table_from_list(title: str, rows: list[dict[str, Any]]) -> None:
+def render_json_summary(title: str, data: Any) -> None:
+    st.markdown(f"#### {title}")
+    if data is None:
+        st.info("No data available.")
+        return
+
+    if isinstance(data, dict):
+        preview = {}
+        for key, value in list(data.items())[:12]:
+            if isinstance(value, list):
+                preview[key] = f"list[{len(value)}]"
+            elif isinstance(value, dict):
+                preview[key] = f"dict[{len(value)}]"
+            else:
+                preview[key] = value
+        st.json(preview)
+    elif isinstance(data, list):
+        st.write(f"List with {len(data)} item(s).")
+        if data:
+            first = data[0]
+            if isinstance(first, dict):
+                st.json(first)
+            else:
+                st.write(first)
+    else:
+        st.write(data)
+
+
+def render_json_details_toggle(title: str, data: Any, key: str) -> None:
+    if data is None:
+        return
+    if st.checkbox(f"Show full {title}", key=key):
+        st.json(data)
+
+
+def render_files_list(title: str, files: list[Path]) -> None:
+    st.markdown(f"#### {title}")
+    if not files:
+        st.info("No files found.")
+        return
+    display_lines = [str(p.relative_to(PROJECT_ROOT)) for p in files]
+    st.code("\n".join(display_lines))
+
+
+def render_table_from_list(title: str, rows: list[dict[str, Any]], max_rows: int = 20) -> None:
     st.markdown(f"#### {title}")
     if not rows:
         st.info("No rows available.")
         return
-    df = pd.DataFrame(rows)
+    df = pd.DataFrame(rows[:max_rows])
     if "details" in df.columns:
         df = df.drop(columns=["details"])
-    st.dataframe(df, width="stretch")
+    st.dataframe(df, width="stretch", height=min(420, 80 + 35 * len(df)))
 
 
 def raise_ui_error(message: str, category: str = "error") -> None:
@@ -216,7 +235,7 @@ st.set_page_config(
 )
 
 st.title("Citation & Collaboration Graph Pipeline")
-st.caption("AMiner DBLP-Citation-network V13 Â· local data engineering + graph analytics workbench")
+st.caption("Performance-safe interface")
 
 overview_tab, demo_tab, inspect_tab, normalize_tab, filter_tab, graph_tab, analyze_tab, insights_tab, quality_tab, history_tab, artifacts_tab = st.tabs(
     [
@@ -235,36 +254,28 @@ overview_tab, demo_tab, inspect_tab, normalize_tab, filter_tab, graph_tab, analy
 )
 
 with overview_tab:
-    section_header("Pipeline Overview", "High-level status of each stage and latest outputs.")
+    section_header("Pipeline Overview", "Compact status without heavy payload rendering.")
     c1, c2, c3, c4, c5, c6 = st.columns(6)
     with c1:
-        metric_card("Raw dataset", status_text(file_exists(RAW_DATASET_PATH)), f"{round(RAW_DATASET_PATH.stat().st_size / (1024**3), 2)} GB" if RAW_DATASET_PATH.exists() else "Dataset not found")
+        metric_card("Raw", status_text(file_exists(RAW_DATASET_PATH)), "Source dataset")
     with c2:
-        metric_card("Inspection", status_text(file_exists(INSPECTION_DIR / "raw_profile.json")), "Raw profile + samples")
+        metric_card("Inspection", status_text(file_exists(INSPECTION_DIR / "raw_profile.json")), "Profile ready")
     with c3:
-        metric_card("Normalization", status_text(file_exists(NORMALIZED_DIR / "_normalization_summary.json")), "Partitioned parquet")
+        metric_card("Normalization", status_text(file_exists(NORMALIZED_DIR / "_normalization_summary.json")), "Parquet ready")
     with c4:
-        metric_card("FOS index", status_text(file_exists(FOS_INDEX_PATH)), "Cached exact FOS values")
+        metric_card("FOS index", status_text(file_exists(FOS_INDEX_PATH)), "Cached values")
     with c5:
-        metric_card("Samples", str(len(list_sample_parquets())), "Versioned demo parquet files")
+        metric_card("Samples", str(len(list_sample_parquets())), "Demo parquet files")
     with c6:
-        metric_card("Run history", str(len(read_pipeline_runs(MANIFEST_PATH))), "Logged pipeline executions")
-
-    st.markdown("---")
-    left, right = st.columns(2)
-    with left:
-        render_json_card("Latest inspection profile", read_json_if_exists(INSPECTION_DIR / "raw_profile.json"))
-    with right:
-        render_json_card("Latest normalization summary", read_json_if_exists(NORMALIZED_DIR / "_normalization_summary.json"))
+        metric_card("Runs", str(len(read_pipeline_runs(MANIFEST_PATH))), "History entries")
 
 with demo_tab:
-    section_header("Demo Workflow", "Work with existing sample datasets or create a new one from an existing subset.")
+    section_header("Demo Workflow", "Choose an existing sample or create a new one, then build/analyze it.")
 
     sample_parquets = list_sample_parquets()
     sample_names = [p.name for p in sample_parquets]
 
     mode = st.radio("Demo mode", ["Use existing sample", "Create new sample"], horizontal=True)
-
     selected_sample_path: Path | None = None
 
     if mode == "Use existing sample":
@@ -273,7 +284,6 @@ with demo_tab:
             selected_sample_path = SAMPLE_DIR / selected_sample_name
         else:
             st.info("No sample parquet found yet.")
-
     else:
         subset_names = [p.name for p in list_subset_dirs()]
         selected_subset = st.selectbox("Source subset", options=subset_names if subset_names else ["<none>"])
@@ -288,7 +298,6 @@ with demo_tab:
             else:
                 sample_output = SAMPLE_DIR / new_sample_name
                 sample_metadata = SAMPLE_DIR / new_sample_name.replace(".parquet", "_metadata.json")
-
                 command = [
                     PYTHON_EXECUTABLE,
                     "scripts/create_sample_dataset.py",
@@ -363,7 +372,6 @@ with demo_tab:
                 ]
                 if overwrite_demo_graph:
                     command.append("--overwrite")
-
                 success, output = run_command(
                     command,
                     stage="build_demo_graph",
@@ -410,12 +418,11 @@ with demo_tab:
 
     st.markdown("---")
 
+    current_sample_name = None
     if mode == "Use existing sample" and sample_names:
         current_sample_name = selected_sample_name
     elif selected_sample_path is not None:
         current_sample_name = selected_sample_path.name
-    else:
-        current_sample_name = None
 
     current_metadata = SAMPLE_DIR / current_sample_name.replace(".parquet", "_metadata.json") if current_sample_name else None
     current_graph_summary = GRAPHS_DIR / f"{demo_graph_name}_{demo_graph_type}_summary.json"
@@ -423,14 +430,20 @@ with demo_tab:
 
     left, middle, right = st.columns(3)
     with left:
-        render_json_card("Sample metadata", read_json_if_exists(current_metadata) if current_metadata else None)
+        sample_meta = read_json_if_exists(current_metadata) if current_metadata else None
+        render_json_summary("Sample metadata", sample_meta)
+        render_json_details_toggle("sample metadata", sample_meta, "demo_meta_full")
     with middle:
-        render_json_card("Demo graph summary", read_json_if_exists(current_graph_summary))
+        graph_summary = read_json_if_exists(current_graph_summary)
+        render_json_summary("Demo graph summary", graph_summary)
+        render_json_details_toggle("demo graph summary", graph_summary, "demo_graph_summary_full")
     with right:
-        render_json_card("Demo analysis", read_json_if_exists(current_analysis))
+        analysis = read_json_if_exists(current_analysis)
+        render_json_summary("Demo analysis", analysis)
+        render_json_details_toggle("demo analysis", analysis, "demo_analysis_full")
 
 with inspect_tab:
-    section_header("Inspect Raw Dataset", "Sample the source file safely and profile its structure.")
+    section_header("Inspect Raw Dataset", "Compact inspection view.")
     max_records = st.slider("Sample record count", min_value=1, max_value=20, value=3)
 
     if st.button("Run raw inspection", width="stretch"):
@@ -442,14 +455,19 @@ with inspect_tab:
         else:
             st.error("Inspection failed.")
 
-    col1, col2 = st.columns(2)
-    with col1:
-        render_json_card("raw_profile.json", read_json_if_exists(INSPECTION_DIR / "raw_profile.json"))
-    with col2:
-        render_json_card("raw_samples.json", read_json_if_exists(INSPECTION_DIR / "raw_samples.json"))
+    profile = read_json_if_exists(INSPECTION_DIR / "raw_profile.json")
+    samples = read_json_if_exists(INSPECTION_DIR / "raw_samples.json")
+
+    c1, c2 = st.columns(2)
+    with c1:
+        render_json_summary("raw_profile.json", profile)
+        render_json_details_toggle("raw profile", profile, "inspect_profile_full")
+    with c2:
+        render_json_summary("raw_samples.json", samples)
+        render_json_details_toggle("raw samples", samples, "inspect_samples_full")
 
 with normalize_tab:
-    section_header("Normalize Dataset", "Convert the raw non-standard JSON array into partitioned parquet.")
+    section_header("Normalize Dataset", "Run normalization without heavy auto-render.")
     col1, col2, col3 = st.columns(3)
     with col1:
         batch_size = st.number_input("Batch size", min_value=1000, max_value=50000, value=10000, step=1000)
@@ -476,18 +494,19 @@ with normalize_tab:
         ]
         if overwrite:
             command.append("--overwrite")
-        success, output = run_command(command, stage="normalize_dataset", parameters={"batch_size": batch_size, "min_year": min_year, "max_year": max_year}, outputs={"output_dir": str(NORMALIZED_DIR)})
+        success, output = run_command(command, stage="normalize_dataset", parameters={"batch_size": batch_size}, outputs={"output_dir": str(NORMALIZED_DIR)})
         st.code(output)
         if success:
             st.success("Normalization completed.")
         else:
             st.error("Normalization failed.")
 
-    render_json_card("_normalization_summary.json", read_json_if_exists(NORMALIZED_DIR / "_normalization_summary.json"))
+    norm_summary = read_json_if_exists(NORMALIZED_DIR / "_normalization_summary.json")
+    render_json_summary("_normalization_summary.json", norm_summary)
+    render_json_details_toggle("normalization summary", norm_summary, "norm_summary_full")
 
 with filter_tab:
-    section_header("Create Filtered Subset", "Build a clean subset by year, range, exact FOS, or year + FOS.")
-
+    section_header("Create Filtered Subset", "Only render compact summaries.")
     subset_dirs = list_subset_dirs()
     existing_subset_names = [p.name for p in subset_dirs]
     available_fos = get_available_fos_values()
@@ -512,10 +531,10 @@ with filter_tab:
     if mode == "year":
         year = st.number_input("Year", min_value=1800, max_value=2026, value=2020)
     elif mode == "range":
-        col1, col2 = st.columns(2)
-        with col1:
+        c1, c2 = st.columns(2)
+        with c1:
             start_year = st.number_input("Start year", min_value=1800, max_value=2026, value=2018)
-        with col2:
+        with c2:
             end_year = st.number_input("End year", min_value=1800, max_value=2026, value=2021)
     elif mode == "fos":
         selected_fos_values = st.multiselect("Fields of Study", options=available_fos, default=[], placeholder="Type to search exact FOS values...")
@@ -545,7 +564,6 @@ with filter_tab:
                 "--subset-name",
                 subset_name,
             ]
-
             if mode == "year":
                 command.extend(["--year", str(year)])
             elif mode == "range":
@@ -567,13 +585,13 @@ with filter_tab:
 
     selected_subset = st.selectbox("Existing subsets", options=existing_subset_names if existing_subset_names else ["<none>"], index=0)
     if selected_subset != "<none>":
-        render_json_card(f"{selected_subset}/_subset_summary.json", read_json_if_exists(SUBSETS_DIR / selected_subset / "_subset_summary.json"))
+        subset_summary = read_json_if_exists(SUBSETS_DIR / selected_subset / "_subset_summary.json")
+        render_json_summary(f"{selected_subset}/_subset_summary.json", subset_summary)
+        render_json_details_toggle("subset summary", subset_summary, "subset_summary_full")
 
 with graph_tab:
-    section_header("Build Graph", "Create citation or collaboration graphs from an existing subset.")
-    subset_dirs = list_subset_dirs()
-    subset_names = [p.name for p in subset_dirs]
-
+    section_header("Build Graph", "Compact graph build UI.")
+    subset_names = [p.name for p in list_subset_dirs()]
     selected_subset_name = st.selectbox("Choose subset", options=subset_names if subset_names else ["<none>"], index=0, key="graph_subset")
     graph_type = st.selectbox("Graph type", ["citation", "collaboration"])
     graph_name = st.text_input("Graph name", value=selected_subset_name if selected_subset_name != "<none>" else "graph")
@@ -604,18 +622,19 @@ with graph_tab:
             if overwrite_graph:
                 command.append("--overwrite")
 
-            success, output = run_command(command, stage="build_graph", parameters={"subset": selected_subset_name, "graph_type": graph_type, "graph_name": graph_name}, outputs={"graph": f"{graph_name}_{graph_type}"})
+            success, output = run_command(command, stage="build_graph", parameters={"subset": selected_subset_name}, outputs={"graph": f"{graph_name}_{graph_type}"})
             st.code(output)
             if success:
                 st.success("Graph build completed.")
             else:
                 st.error("Graph build failed.")
 
-    summary_path = GRAPHS_DIR / f"{graph_name}_{graph_type}_summary.json"
-    render_json_card(f"{graph_name}_{graph_type}_summary.json", read_json_if_exists(summary_path))
+    graph_summary = read_json_if_exists(GRAPHS_DIR / f"{graph_name}_{graph_type}_summary.json")
+    render_json_summary(f"{graph_name}_{graph_type}_summary.json", graph_summary)
+    render_json_details_toggle("graph summary", graph_summary, "graph_summary_full")
 
 with analyze_tab:
-    section_header("Analyze Graph", "Compute graph summary, communities, centralities and PageRank.")
+    section_header("Analyze Graph", "Compact analysis view.")
     graph_bases = extract_graph_base_names()
     selected_base = st.selectbox("Choose graph base name", options=graph_bases if graph_bases else ["<none>"], index=0)
     selected_graph_type = st.selectbox("Graph type to analyze", ["citation", "collaboration"], key="analysis_graph_type")
@@ -653,19 +672,19 @@ with analyze_tab:
             ]
             if exact_betweenness:
                 command.append("--exact-betweenness")
-
-            success, output = run_command(command, stage="analyze_graph", parameters={"graph": graph_input.name, "top_n": top_n}, outputs={"analysis": analysis_output.name})
+            success, output = run_command(command, stage="analyze_graph", parameters={"graph": graph_input.name}, outputs={"analysis": analysis_output.name})
             st.code(output)
             if success:
                 st.success("Graph analysis completed.")
             else:
                 st.error("Graph analysis failed.")
 
-    render_json_card(analysis_output.name, read_json_if_exists(analysis_output))
+    analysis_data = read_json_if_exists(analysis_output)
+    render_json_summary(analysis_output.name, analysis_data)
+    render_json_details_toggle("analysis output", analysis_data, "analysis_output_full")
 
 with insights_tab:
-    section_header("Graph Insights Dashboard", "Explore analysis results, inspect nodes, and export rankings to CSV.")
-
+    section_header("Graph Insights Dashboard", "Only small tables by default.")
     analysis_bases = extract_analysis_base_names()
     selected_insight_base = st.selectbox("Choose analysis base name", options=analysis_bases if analysis_bases else ["<none>"], index=0)
     selected_insight_type = st.selectbox("Analysis graph type", ["citation", "collaboration"], key="insight_graph_type")
@@ -674,33 +693,29 @@ with insights_tab:
         analysis_path = METRICS_DIR / f"{selected_insight_base}_{selected_insight_type}_analysis.json"
         analysis = read_json_if_exists(analysis_path)
     else:
-        analysis_path = METRICS_DIR / "analysis.json"
         analysis = None
+        analysis_path = METRICS_DIR / "analysis.json"
 
     export_dir = EXPORTS_DIR / f"{selected_insight_base}_{selected_insight_type}" if selected_insight_base != "<none>" else EXPORTS_DIR / "analysis"
 
-    export_col1, export_col2 = st.columns([1, 2])
-    with export_col1:
-        if st.button("Export analysis CSV", width="stretch"):
-            if selected_insight_base == "<none>":
-                raise_ui_error("No analysis available.")
+    if st.button("Export analysis CSV", width="stretch"):
+        if selected_insight_base == "<none>":
+            raise_ui_error("No analysis available.")
+        else:
+            command = [
+                PYTHON_EXECUTABLE,
+                "scripts/export_analysis_csv.py",
+                "--input",
+                str(analysis_path),
+                "--output-dir",
+                str(export_dir),
+            ]
+            success, output = run_command(command, stage="export_analysis_csv", parameters={"analysis": analysis_path.name}, outputs={"export_dir": str(export_dir)})
+            st.code(output)
+            if success:
+                st.success("CSV export completed.")
             else:
-                command = [
-                    PYTHON_EXECUTABLE,
-                    "scripts/export_analysis_csv.py",
-                    "--input",
-                    str(analysis_path),
-                    "--output-dir",
-                    str(export_dir),
-                ]
-                success, output = run_command(command, stage="export_analysis_csv", parameters={"analysis": analysis_path.name}, outputs={"export_dir": str(export_dir)})
-                st.code(output)
-                if success:
-                    st.success("CSV export completed.")
-                else:
-                    st.error("CSV export failed.")
-    with export_col2:
-        st.caption("Exports pagerank, degree, closeness, betweenness and communities to CSV.")
+                st.error("CSV export failed.")
 
     if isinstance(analysis, dict):
         summary = analysis.get("summary", {})
@@ -723,27 +738,13 @@ with insights_tab:
         with c5:
             metric_card("Communities", str(communities.get("num_communities", "")), "Detected with Louvain")
 
-        st.markdown("---")
-
         left, right = st.columns(2)
         with left:
-            render_table_from_list("Top PageRank", pagerank)
-            render_table_from_list("Top Degree Centrality", degree)
+            render_table_from_list("Top PageRank", pagerank, max_rows=10)
+            render_table_from_list("Top Degree", degree, max_rows=10)
         with right:
-            render_table_from_list("Top Closeness Centrality", closeness)
-            render_table_from_list("Top Betweenness Centrality", betweenness)
-
-        st.markdown("---")
-        largest_communities = communities.get("largest_communities", [])
-        render_table_from_list("Largest Communities", largest_communities)
-
-        if largest_communities:
-            community_df = pd.DataFrame(largest_communities).set_index("community_id")
-            st.markdown("#### Largest community sizes")
-            st.bar_chart(community_df["size"])
-
-        st.markdown("---")
-        st.markdown("### Node Details Explorer")
+            render_table_from_list("Top Closeness", closeness, max_rows=10)
+            render_table_from_list("Top Betweenness", betweenness, max_rows=10)
 
         detail_options = []
         for section in [pagerank, degree, closeness, betweenness]:
@@ -758,18 +759,11 @@ with insights_tab:
             selected_label = st.selectbox("Choose a ranked node", options=detail_options)
             selected_node_id = selected_label.split(" | ")[-1]
             selected_node_details = node_details_index.get(selected_node_id, {})
-            render_json_card("Node details", selected_node_details)
-        else:
-            st.info("No ranked nodes available.")
-
-        export_files = list_relative_files(export_dir) if export_dir.exists() else []
-        render_files_list("Exported CSV files", export_files, limit=50)
-    else:
-        st.info("No analysis file available for the selected graph.")
+            render_json_summary("Node details", selected_node_details)
+            render_json_details_toggle("node details", selected_node_details, "node_details_full")
 
 with quality_tab:
-    section_header("Data Quality Dashboard", "Profile normalized data, subsets, or sample parquet with a compact quality report.")
-
+    section_header("Data Quality Dashboard", "Compact quality reporting.")
     quality_input_mode = st.selectbox("Quality source", ["normalized", "subset", "sample"])
     top_n = st.number_input("Top N values", min_value=3, max_value=50, value=10, step=1)
 
@@ -789,9 +783,6 @@ with quality_tab:
 
     quality_output = QUALITY_DIR / quality_default_name
 
-    st.code(f"Input: {quality_input.name if quality_input != NORMALIZED_DIR else 'normalized parquet root'}")
-    st.code(f"Output: {quality_output.name}")
-
     if st.button("Compute data quality report", width="stretch"):
         command = [
             PYTHON_EXECUTABLE,
@@ -803,7 +794,7 @@ with quality_tab:
             "--top-n",
             str(top_n),
         ]
-        success, output = run_command(command, stage="compute_data_quality", parameters={"input": str(quality_input), "top_n": top_n}, outputs={"output": str(quality_output)})
+        success, output = run_command(command, stage="compute_data_quality", parameters={"input": str(quality_input)}, outputs={"output": str(quality_output)})
         st.code(output)
         if success:
             st.success("Data quality report completed.")
@@ -823,38 +814,29 @@ with quality_tab:
         with c4:
             metric_card("Zero authors", f"{round(summary.get('zero_author_ratio', 0) * 100, 2)}%", "author_count = 0")
 
-        c5, c6 = st.columns(2)
-        with c5:
-            render_table_from_list("Top years", quality_report.get("top_years", []))
-        with c6:
-            render_table_from_list("Top FOS", quality_report.get("top_fos", []))
-    else:
-        st.info("No data quality report available yet.")
+        render_table_from_list("Top years", quality_report.get("top_years", []), max_rows=10)
+        render_table_from_list("Top FOS", quality_report.get("top_fos", []), max_rows=10)
 
 with history_tab:
-    section_header("Pipeline Run History", "Review recent pipeline executions logged by the app.")
+    section_header("Pipeline Run History", "Compact history viewer.")
     runs = read_pipeline_runs(MANIFEST_PATH)
 
     if runs:
-        runs_df = pd.DataFrame(runs)
-        st.dataframe(runs_df.iloc[::-1], width="stretch")
-
-        st.markdown("#### Recent run details")
+        runs_df = pd.DataFrame(runs[::-1][:30])
+        st.dataframe(runs_df, width="stretch", height=420)
         selected_index = st.number_input("Run index from latest (0 = latest)", min_value=0, max_value=max(len(runs) - 1, 0), value=0, step=1)
         selected_run = runs[::-1][selected_index]
-        st.json(selected_run)
+        render_json_summary("Selected run", selected_run)
+        render_json_details_toggle("selected run", selected_run, "run_details_full")
     else:
         st.info("No pipeline runs logged yet.")
 
 with artifacts_tab:
-    section_header("Artifacts Explorer", "Browse generated files across inspection, subsets, sample, graphs, metrics, quality and manifests.")
+    section_header("Artifacts Explorer", "Lightweight file browser.")
     c1, c2 = st.columns(2)
     with c1:
-        render_files_list("Inspection files", list_relative_files(INSPECTION_DIR))
-        render_files_list("Sample files", list_relative_files(SAMPLE_DIR), limit=50)
-        render_files_list("Graph files", list_relative_files(GRAPHS_DIR), limit=200)
+        render_files_list("Sample files", list_relative_files(SAMPLE_DIR, limit=30))
+        render_files_list("Graph files", list_relative_files(GRAPHS_DIR, limit=30))
     with c2:
-        render_files_list("Metric files", list_relative_files(METRICS_DIR), limit=200)
-        render_files_list("Export files", list_relative_files(EXPORTS_DIR), limit=200)
-        render_files_list("Quality files", list_relative_files(QUALITY_DIR), limit=100)
-        render_files_list("Manifest files", list_relative_files(MANIFEST_PATH.parent), limit=50)
+        render_files_list("Metric files", list_relative_files(METRICS_DIR, limit=30))
+        render_files_list("Quality files", list_relative_files(QUALITY_DIR, limit=30))
