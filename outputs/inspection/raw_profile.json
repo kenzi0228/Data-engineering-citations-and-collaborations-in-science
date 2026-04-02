@@ -7,26 +7,26 @@
         "suffix": ".json"
     },
     "detected_structure": "json_array_non_standard_possible",
-    "sample_record_count": 3,
+    "sample_record_count": 2,
     "schema_profile": {
-        "num_sampled_records": 3,
+        "num_sampled_records": 2,
         "fields": {
             "_id": {
-                "occurrences": 3,
+                "occurrences": 2,
                 "observed_types": [
                     "str"
                 ],
                 "sample_value": "53e99784b7602d9701f3e3f5"
             },
             "title": {
-                "occurrences": 3,
+                "occurrences": 2,
                 "observed_types": [
                     "str"
                 ],
                 "sample_value": "3GIO."
             },
             "venue": {
-                "occurrences": 3,
+                "occurrences": 2,
                 "observed_types": [
                     "dict"
                 ],
@@ -35,35 +35,35 @@
                 }
             },
             "year": {
-                "occurrences": 3,
+                "occurrences": 2,
                 "observed_types": [
                     "int"
                 ],
                 "sample_value": 2011
             },
             "keywords": {
-                "occurrences": 3,
+                "occurrences": 2,
                 "observed_types": [
                     "list"
                 ],
                 "sample_value": []
             },
             "n_citation": {
-                "occurrences": 3,
+                "occurrences": 2,
                 "observed_types": [
                     "int"
                 ],
                 "sample_value": 0
             },
             "lang": {
-                "occurrences": 3,
+                "occurrences": 2,
                 "observed_types": [
                     "str"
                 ],
                 "sample_value": "en"
             },
             "authors": {
-                "occurrences": 2,
+                "occurrences": 1,
                 "observed_types": [
                     "list"
                 ],
@@ -91,7 +91,7 @@
                 ]
             },
             "fos": {
-                "occurrences": 2,
+                "occurrences": 1,
                 "observed_types": [
                     "list"
                 ],
@@ -110,63 +110,63 @@
                 ]
             },
             "page_start": {
-                "occurrences": 2,
+                "occurrences": 1,
                 "observed_types": [
                     "str"
                 ],
                 "sample_value": "1930"
             },
             "page_end": {
-                "occurrences": 2,
+                "occurrences": 1,
                 "observed_types": [
                     "str"
                 ],
                 "sample_value": "1933"
             },
             "volume": {
-                "occurrences": 2,
+                "occurrences": 1,
                 "observed_types": [
                     "str"
                 ],
                 "sample_value": "null"
             },
             "issue": {
-                "occurrences": 2,
+                "occurrences": 1,
                 "observed_types": [
                     "str"
                 ],
                 "sample_value": "null"
             },
             "issn": {
-                "occurrences": 2,
+                "occurrences": 1,
                 "observed_types": [
                     "str"
                 ],
                 "sample_value": ""
             },
             "isbn": {
-                "occurrences": 2,
+                "occurrences": 1,
                 "observed_types": [
                     "str"
                 ],
                 "sample_value": ""
             },
             "doi": {
-                "occurrences": 2,
+                "occurrences": 1,
                 "observed_types": [
                     "str"
                 ],
                 "sample_value": "10.1109/IGARSS.2011.6049503"
             },
             "pdf": {
-                "occurrences": 2,
+                "occurrences": 1,
                 "observed_types": [
                     "NoneType"
                 ],
                 "sample_value": null
             },
             "url": {
-                "occurrences": 2,
+                "occurrences": 1,
                 "observed_types": [
                     "list"
                 ],
@@ -175,27 +175,14 @@
                 ]
             },
             "abstract": {
-                "occurrences": 2,
+                "occurrences": 1,
                 "observed_types": [
                     "str"
                 ],
                 "sample_value": "Drought is the first place in all the natural disasters in the world. It is especially serious in North China Plain. In this paper, different soil water content control levels at winter wheat growth stages are performed on Gucheng Ecological-Meteorological Integrated Observation Experiment Station o"
-            },
-            "references": {
-                "occurrences": 1,
-                "observed_types": [
-                    "list"
-                ],
-                "sample_value": [
-                    "53e99cf5b7602d97025ace63",
-                    "557e8a7a6fee0fe990caa63d",
-                    "53e9a96cb7602d97032c459a",
-                    "53e9b929b7602d9704515791",
-                    "557e59ebf6678c77ea222447"
-                ]
             }
         },
-        "field_count": 20
+        "field_count": 19
     },
     "non_standard_json_tokens_detected": true,
     "notes": [
