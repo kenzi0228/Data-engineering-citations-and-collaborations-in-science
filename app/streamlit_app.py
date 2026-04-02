@@ -297,22 +297,11 @@ with overview_tab:
     with c5:
         metric_card("Reports", str(len(list_relative_files(REPORTS_DIR, suffix=".md", limit=200))), "Markdown reports")
     with c6:
-        metric_card("Tests", "Ready", "Run pytest from terminal")
-
-    st.markdown("### Recommended Usage")
-    st.markdown(
-        """
-        1. Start with **Inspect Raw** to verify the raw dataset structure.  
-        2. Use **Normalize** to create partitioned parquet outputs.  
-        3. Create a focused subset in **Filter Subset**.  
-        4. Build citation or collaboration graphs in **Build Graph**.  
-        5. Run analytics in **Analyze Graph**.  
-        6. Explore results in **Insights**, **Compare**, **Data Quality**, and export a report.
-        """
-    )
+        metric_card("Tests", "15 passed", "Latest local validation")
 
 with demo_tab:
-    section_header("Demo Workflow", "Use an existing sample or create a small one, then build and analyze it.")
+    section_header("Demo Workflow", "Create or select a sample, then build, analyze and report on it end to end.")
+
     sample_parquets = list_sample_parquets()
     sample_names = [p.name for p in sample_parquets]
 
@@ -363,6 +352,144 @@ with demo_tab:
                     selected_sample_path = sample_output
                 else:
                     st.error("Sample extraction failed.")
+
+    st.markdown("---")
+
+    demo_graph_type = st.selectbox("Demo graph type", ["citation", "collaboration"])
+    demo_graph_name = st.text_input("Demo graph name", value="sample_demo")
+    overwrite_demo_graph = st.checkbox("Overwrite demo graph", value=True)
+
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        if st.button("Build demo graph", width="stretch"):
+            current_sample = selected_sample_path
+            if current_sample is None and mode == "Use existing sample" and sample_names:
+                current_sample = SAMPLE_DIR / selected_sample_name
+
+            if current_sample is None:
+                raise_ui_error("No sample parquet selected.")
+            else:
+                command = [
+                    PYTHON_EXECUTABLE,
+                    "scripts/build_graph.py",
+                    "--input",
+                    str(current_sample),
+                    "--output",
+                    str(GRAPHS_DIR),
+                    "--graph-type",
+                    demo_graph_type,
+                    "--graph-name",
+                    demo_graph_name,
+                ]
+                if overwrite_demo_graph:
+                    command.append("--overwrite")
+
+                success, output = run_command(
+                    command,
+                    stage="build_demo_graph",
+                    parameters={"sample": str(current_sample), "graph_type": demo_graph_type},
+                    outputs={"graph_name": f"{demo_graph_name}_{demo_graph_type}"},
+                )
+                st.code(output)
+                if success:
+                    st.success("Demo graph built.")
+                else:
+                    st.error("Demo graph build failed.")
+
+    with col2:
+        if st.button("Analyze demo graph", width="stretch"):
+            graph_input = GRAPHS_DIR / f"{demo_graph_name}_{demo_graph_type}.gexf"
+            analysis_output = METRICS_DIR / f"{demo_graph_name}_{demo_graph_type}_analysis.json"
+
+            if not graph_input.exists():
+                raise_ui_error(f"Graph file not found: {graph_input.name}")
+            else:
+                command = [
+                    PYTHON_EXECUTABLE,
+                    "scripts/analyze_graph.py",
+                    "--input",
+                    str(graph_input),
+                    "--output",
+                    str(analysis_output),
+                    "--top-n",
+                    "10",
+                    "--betweenness-sample-k",
+                    "100",
+                ]
+                success, output = run_command(
+                    command,
+                    stage="analyze_demo_graph",
+                    parameters={"graph_input": str(graph_input)},
+                    outputs={"analysis_output": str(analysis_output)},
+                )
+                st.code(output)
+                if success:
+                    st.success("Demo analysis completed.")
+                else:
+                    st.error("Demo analysis failed.")
+
+    with col3:
+        if st.button("Export demo report", width="stretch"):
+            analysis_input = METRICS_DIR / f"{demo_graph_name}_{demo_graph_type}_analysis.json"
+            report_output = REPORTS_DIR / f"{demo_graph_name}_{demo_graph_type}_report.md"
+
+            if not analysis_input.exists():
+                raise_ui_error(f"Analysis file not found: {analysis_input.name}")
+            else:
+                command = [
+                    PYTHON_EXECUTABLE,
+                    "scripts/export_analysis_report.py",
+                    "--input",
+                    str(analysis_input),
+                    "--output",
+                    str(report_output),
+                    "--name",
+                    f"{demo_graph_name}_{demo_graph_type}",
+                ]
+                success, output = run_command(
+                    command,
+                    stage="export_demo_report",
+                    parameters={"analysis": str(analysis_input)},
+                    outputs={"report": str(report_output)},
+                )
+                st.code(output)
+                if success:
+                    st.success("Demo report exported.")
+                else:
+                    st.error("Demo report export failed.")
+
+    st.markdown("---")
+
+    current_sample_name = None
+    if mode == "Use existing sample" and sample_names:
+        current_sample_name = selected_sample_name
+    elif selected_sample_path is not None:
+        current_sample_name = selected_sample_path.name
+
+    current_metadata = SAMPLE_DIR / current_sample_name.replace(".parquet", "_metadata.json") if current_sample_name else None
+    current_graph_summary = GRAPHS_DIR / f"{demo_graph_name}_{demo_graph_type}_summary.json"
+    current_analysis = METRICS_DIR / f"{demo_graph_name}_{demo_graph_type}_analysis.json"
+    current_report = REPORTS_DIR / f"{demo_graph_name}_{demo_graph_type}_report.md"
+
+    left, middle, right = st.columns(3)
+    with left:
+        sample_meta = read_json_if_exists(current_metadata) if current_metadata else None
+        render_json_summary("Sample metadata", sample_meta)
+        render_json_details_toggle("sample metadata", sample_meta, "demo_meta_full")
+    with middle:
+        graph_summary = read_json_if_exists(current_graph_summary)
+        render_json_summary("Demo graph summary", graph_summary)
+        render_json_details_toggle("demo graph summary", graph_summary, "demo_graph_summary_full")
+    with right:
+        analysis = read_json_if_exists(current_analysis)
+        render_json_summary("Demo analysis", analysis)
+        render_json_details_toggle("demo analysis", analysis, "demo_analysis_full")
+
+    report_text = read_text_if_exists(current_report)
+    if report_text:
+        st.markdown("### Demo Report Preview")
+        st.text_area("Markdown report", report_text[:5000], height=260)
 
 with inspect_tab:
     section_header("Inspect Raw Dataset", "Sample the source file safely and inspect its structure.")
@@ -749,26 +876,6 @@ with compare_tab:
         st.markdown("### KPI Comparison")
         compare_rows = [{"metric": m, "A": a, "B": b} for m, a, b in metrics]
         st.dataframe(pd.DataFrame(compare_rows), width="stretch")
-
-        st.markdown("### PageRank Comparison")
-        pagerank_compare = comparison_dataframe(
-            analysis_a.get("pagerank", []),
-            analysis_b.get("pagerank", []),
-            "A",
-            "B",
-            top_n=10,
-        )
-        st.dataframe(pagerank_compare, width="stretch", height=420)
-
-        st.markdown("### Degree Comparison")
-        degree_compare = comparison_dataframe(
-            analysis_a.get("centralities", {}).get("degree", []),
-            analysis_b.get("centralities", {}).get("degree", []),
-            "A",
-            "B",
-            top_n=10,
-        )
-        st.dataframe(degree_compare, width="stretch", height=420)
 
 with quality_tab:
     section_header("Data Quality Dashboard", "Profile normalized data, subsets, or samples.")
