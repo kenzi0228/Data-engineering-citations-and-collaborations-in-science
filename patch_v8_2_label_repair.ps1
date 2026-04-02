@@ -1,4 +1,9 @@
-﻿from __future__ import annotations
+$ErrorActionPreference = "Stop"
+
+New-Item -ItemType Directory -Force -Path "src\citation_graphs" | Out-Null
+
+@'
+from __future__ import annotations
 
 import json
 import random
@@ -126,7 +131,7 @@ def _resolve_display_name(node_id: Any, attrs: dict[str, Any]) -> str:
     name = _clean_candidate(attrs.get("name"))
     display_name = _clean_candidate(attrs.get("display_name"))
 
-    # PrioritÃ© mÃ©tier absolue
+    # Priorité métier absolue
     if title and not _looks_like_placeholder(title, node_id_str):
         return title
 
@@ -311,3 +316,7 @@ def save_analysis_results(results: dict[str, Any], output_path: str | Path) -> N
 
     with output_path.open("w", encoding="utf-8") as file:
         json.dump(results, file, indent=4, ensure_ascii=False)
+'@ | Set-Content "src\citation_graphs\graph_analysis.py" -Encoding UTF8
+
+Write-Host "V8.2 label repair patch applied."
+Write-Host "Updated: src\citation_graphs\graph_analysis.py"
