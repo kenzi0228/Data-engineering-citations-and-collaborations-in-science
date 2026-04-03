@@ -79,6 +79,7 @@ def run_command(command: list[str], stage: str, parameters: dict[str, Any] | Non
         return False, f"[{elapsed}s]\n{output or 'Command failed with no output.'}"
 
 
+@st.cache_data(show_spinner=False)
 def read_json_if_exists(path: Path) -> dict | list | None:
     if not path.exists():
         return None
@@ -88,6 +89,7 @@ def read_json_if_exists(path: Path) -> dict | list | None:
         return None
 
 
+@st.cache_data(show_spinner=False)
 def read_text_if_exists(path: Path) -> str | None:
     if not path.exists():
         return None
@@ -97,10 +99,12 @@ def read_text_if_exists(path: Path) -> str | None:
         return None
 
 
+@st.cache_data(show_spinner=False)
 def file_exists(path: Path) -> bool:
     return path.exists()
 
 
+@st.cache_data(show_spinner=False)
 def list_relative_files(directory: Path, suffix: str | None = None, limit: int = 100) -> list[Path]:
     if not directory.exists():
         return []
@@ -110,24 +114,28 @@ def list_relative_files(directory: Path, suffix: str | None = None, limit: int =
     return sorted(files)[:limit]
 
 
+@st.cache_data(show_spinner=False)
 def list_subset_dirs() -> list[Path]:
     if not SUBSETS_DIR.exists():
         return []
     return sorted([p for p in SUBSETS_DIR.iterdir() if p.is_dir()])
 
 
+@st.cache_data(show_spinner=False)
 def list_graph_summaries() -> list[Path]:
     if not GRAPHS_DIR.exists():
         return []
     return sorted(GRAPHS_DIR.glob("*_summary.json"))
 
 
+@st.cache_data(show_spinner=False)
 def list_metric_jsons() -> list[Path]:
     if not METRICS_DIR.exists():
         return []
     return sorted([p for p in METRICS_DIR.glob("*.json") if p.name != ".gitkeep"])
 
 
+@st.cache_data(show_spinner=False)
 def list_sample_parquets() -> list[Path]:
     if not SAMPLE_DIR.exists():
         return []
@@ -267,6 +275,22 @@ def metric_card(title: str, value: str, caption: str = "") -> None:
         """,
         unsafe_allow_html=True,
     )
+
+
+def format_elapsed_seconds(seconds: float) -> str:
+    return f"{seconds:.3f}s"
+
+
+def show_timing_note(label: str, started: float) -> None:
+    elapsed = time.perf_counter() - started
+    st.caption(f"{label}: {format_elapsed_seconds(elapsed)}")
+
+
+def prefer_existing_subset_path(subset_name: str | None) -> Path | None:
+    if not subset_name:
+        return None
+    candidate = SUBSETS_DIR / subset_name / "data.parquet"
+    return candidate if candidate.exists() else None
 
 
 def section_header(title: str, description: str = "") -> None:
@@ -478,6 +502,7 @@ with overview_tab:
         metric_card("Reports", str(len(list_relative_files(REPORTS_DIR, suffix=".md", limit=200))), "Markdown reports")
     with c6:
         metric_card("Tests", "Ready", "Core suite green")
+    st.caption("Performance note: repeated UI reads are cached. For graph construction, creating the subset first can reduce end-to-end time.")
 
     st.markdown("### Recommended Usage")
     st.markdown(
@@ -653,6 +678,7 @@ with search_tab:
         st.info(
             f"Selected authors: {len(effective_queries)} | Match mode: {match_mode.upper()} | "
             + (f"Year filter: {start_year}-{end_year}" if enable_year_filter else "Year filter: disabled")
+            + " | Tip: build the subset first, then the graph can reuse it."
         )
 
         action_a, action_b, action_c = st.columns(3)
@@ -734,11 +760,13 @@ with search_tab:
                     if not source_path:
                         raise_ui_error("Source path missing.")
                     else:
+                        preferred_subset = prefer_existing_subset_path(subset_name)
+                        graph_input = preferred_subset or source_path
                         command = [
                             PYTHON_EXECUTABLE,
                             "scripts/build_author_ego_graph.py",
                             "--input",
-                            str(source_path),
+                            str(graph_input),
                             "--author-query",
                             effective_queries[0],
                             "--output-dir",
@@ -763,11 +791,13 @@ with search_tab:
                     if not source_path:
                         raise_ui_error("Source path missing.")
                     else:
+                        preferred_subset = prefer_existing_subset_path(subset_name)
+                        graph_input = preferred_subset or source_path
                         command = [
                             PYTHON_EXECUTABLE,
                             "scripts/build_multi_author_graph.py",
                             "--input",
-                            str(source_path),
+                            str(graph_input),
                             "--authors",
                             *effective_queries,
                             "--match-mode",
@@ -991,6 +1021,7 @@ with publication_tab:
         st.info(
             f"Title query: {st.session_state['publication_title_query']} | "
             + (f"Year filter: {publication_start_year}-{publication_end_year}" if publication_enable_year_filter else "Year filter: disabled")
+            + " | Tip: create the subset first, then the graph can reuse it."
         )
 
         action_a, action_b, action_c = st.columns(3)
@@ -1039,11 +1070,13 @@ with publication_tab:
                 if not publication_source_path:
                     raise_ui_error("Source path missing.")
                 else:
+                    preferred_subset = prefer_existing_subset_path(publication_subset_name)
+                    graph_input = preferred_subset or publication_source_path
                     command = [
                         PYTHON_EXECUTABLE,
                         "scripts/build_publication_neighborhood_graph.py",
                         "--input",
-                        str(publication_source_path),
+                        str(graph_input),
                         "--title-query",
                         st.session_state["publication_title_query"],
                         "--output-dir",

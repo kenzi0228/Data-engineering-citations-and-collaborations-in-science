@@ -12,3 +12,9 @@ def test_suggest_authors_word_match() -> None:
     authors = ["Ian McCulloh", "Kathleen M. Carley", "Alice Doe"]
     suggestions = suggest_authors(authors, "mcc", limit=20)
     assert "Ian McCulloh" in suggestions
+
+
+def test_suggest_authors_starts_before_contains() -> None:
+    authors = ["Ian McCulloh", "McCulloh Ian", "Zed Ian"]
+    suggestions = suggest_authors(authors, "ian", limit=10)
+    assert suggestions[0] == "Ian McCulloh"
