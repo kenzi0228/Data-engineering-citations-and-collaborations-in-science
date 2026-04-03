@@ -45,9 +45,11 @@ data/processed/*
 # Otherwise uncomment the next line:
 # data/sample/*
 
-# Reference caches
-data/reference/author_index_normalized.json
-data/reference/author_index_sample.json
+# Reference indexes
+data/reference/*
+!data/reference/.gitkeep
+!data/reference/publication_index_sample.json
+
 
 # Generated outputs
 outputs/graphs/*

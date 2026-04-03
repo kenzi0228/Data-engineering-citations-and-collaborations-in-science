@@ -40,7 +40,8 @@ SEARCH_DIR = PROJECT_ROOT / "outputs" / "search"
 FOS_INDEX_PATH = PROJECT_ROOT / "data" / "reference" / "fos_index.json"
 AUTHOR_INDEX_NORMALIZED_PATH = PROJECT_ROOT / "data" / "reference" / "author_index_normalized.json"
 AUTHOR_INDEX_SAMPLE_PATH = PROJECT_ROOT / "data" / "reference" / "author_index_sample.json"
-SAMPLE_DIR = PROJECT_ROOT / "data" / "sample"
+SAMPLE_DIR = PROJECT_ROOT / "data" / "sample"
+REFERENCE_DIR = PROJECT_ROOT / "data" / "reference"
 MANIFEST_PATH = PROJECT_ROOT / "outputs" / "manifests" / "pipeline_runs.jsonl"
 QUALITY_DIR = PROJECT_ROOT / "outputs" / "quality"
 
@@ -2322,3 +2323,6 @@ with artifacts_tab:
     with c2:
         render_files_list("Metric files", list_relative_files(METRICS_DIR, limit=30))
         render_files_list("Quality files", list_relative_files(QUALITY_DIR, limit=30))
+
+
+
