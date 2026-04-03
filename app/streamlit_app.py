@@ -15,8 +15,11 @@ SRC_PATH = PROJECT_ROOT / "src"
 if str(SRC_PATH) not in sys.path:
     sys.path.insert(0, str(SRC_PATH))
 
+from citation_graphs.author_index import load_author_index, suggest_authors
+from citation_graphs.author_profile import build_author_profile
 from citation_graphs.fos_index import load_fos_index
 from citation_graphs.manifests import append_pipeline_run, read_pipeline_runs
+from citation_graphs.search import export_search_results_csv, search_author_records, search_author_records_multi, slugify
 
 PYTHON_EXECUTABLE = sys.executable
 
@@ -28,7 +31,10 @@ GRAPHS_DIR = PROJECT_ROOT / "outputs" / "graphs"
 METRICS_DIR = PROJECT_ROOT / "outputs" / "metrics"
 EXPORTS_DIR = PROJECT_ROOT / "outputs" / "exports"
 REPORTS_DIR = PROJECT_ROOT / "outputs" / "reports"
+SEARCH_DIR = PROJECT_ROOT / "outputs" / "search"
 FOS_INDEX_PATH = PROJECT_ROOT / "data" / "reference" / "fos_index.json"
+AUTHOR_INDEX_NORMALIZED_PATH = PROJECT_ROOT / "data" / "reference" / "author_index_normalized.json"
+AUTHOR_INDEX_SAMPLE_PATH = PROJECT_ROOT / "data" / "reference" / "author_index_sample.json"
 SAMPLE_DIR = PROJECT_ROOT / "data" / "sample"
 MANIFEST_PATH = PROJECT_ROOT / "outputs" / "manifests" / "pipeline_runs.jsonl"
 QUALITY_DIR = PROJECT_ROOT / "outputs" / "quality"
@@ -257,18 +263,65 @@ def comparison_dataframe(rows_a: list[dict[str, Any]], rows_b: list[dict[str, An
     return pd.merge(a, b, on="node_id", how="outer")
 
 
+def resolve_search_source(source_mode: str, selected_subset: str | None, selected_sample: str | None) -> Path | None:
+    if source_mode == "normalized":
+        return NORMALIZED_DIR if NORMALIZED_DIR.exists() else None
+    if source_mode == "subset":
+        if selected_subset and selected_subset != "<none>":
+            subset_path = SUBSETS_DIR / selected_subset / "data.parquet"
+            return subset_path if subset_path.exists() else None
+        return None
+    if source_mode == "sample":
+        if selected_sample and selected_sample != "<none>":
+            sample_path = SAMPLE_DIR / selected_sample
+            return sample_path if sample_path.exists() else None
+        return None
+    return None
+
+
+def build_search_results_dataframe(rows: list[dict[str, Any]]) -> pd.DataFrame:
+    prepared = []
+    for row in rows:
+        prepared.append(
+            {
+                "paper_id": row.get("paper_id"),
+                "title": row.get("title"),
+                "year_clean": row.get("year_clean"),
+                "venue_name": row.get("venue_name"),
+                "author_names": " | ".join(str(x) for x in row.get("author_names", [])),
+                "fos": " | ".join(str(x) for x in row.get("fos", [])),
+                "n_citation": row.get("n_citation"),
+            }
+        )
+    return pd.DataFrame(prepared)
+
+
 st.set_page_config(
     page_title="Citation & Collaboration Graph Pipeline",
     page_icon="ðŸ“Š",
     layout="wide",
 )
 
+if "search_rows" not in st.session_state:
+    st.session_state["search_rows"] = []
+if "search_profile" not in st.session_state:
+    st.session_state["search_profile"] = None
+if "search_author_query" not in st.session_state:
+    st.session_state["search_author_query"] = ""
+if "search_selected_authors" not in st.session_state:
+    st.session_state["search_selected_authors"] = []
+if "insights_base_name" not in st.session_state:
+    st.session_state["insights_base_name"] = None
+if "insights_graph_type" not in st.session_state:
+    st.session_state["insights_graph_type"] = "collaboration"
+
 st.title("Citation & Collaboration Graph Pipeline")
 st.caption("Quick Start: 1) inspect raw data, 2) normalize, 3) create a subset, 4) build a graph, 5) run analysis, 6) explore insights, comparisons, quality and reports.")
 
-overview_tab, demo_tab, inspect_tab, normalize_tab, filter_tab, graph_tab, analyze_tab, insights_tab, compare_tab, quality_tab, history_tab, artifacts_tab = st.tabs(
+overview_tab, search_tab, demo_tab, inspect_tab, normalize_tab, filter_tab, graph_tab, analyze_tab, insights_tab, compare_tab, quality_tab, history_tab, artifacts_tab = st.tabs(
     [
         "Overview",
+        "Search",
         "Demo",
         "Inspect Raw",
         "Normalize",
@@ -297,7 +350,292 @@ with overview_tab:
     with c5:
         metric_card("Reports", str(len(list_relative_files(REPORTS_DIR, suffix=".md", limit=200))), "Markdown reports")
     with c6:
-        metric_card("Tests", "15 passed", "Latest local validation")
+        metric_card("Tests", "Ready", "Core suite green")
+
+    st.markdown("### Recommended Usage")
+    st.markdown(
+        """
+        1. Start with **Search** or **Inspect Raw**.  
+        2. Use **Normalize** to create partitioned parquet outputs.  
+        3. Create a focused subset in **Filter Subset** or directly from **Search**.  
+        4. Build citation or collaboration graphs.  
+        5. Run analytics and export reports.  
+        6. Explore results in **Insights**, **Compare**, and **Data Quality**.
+        """
+    )
+
+with search_tab:
+    section_header("Author Investigation", "Search one or several authors, use exact indexed suggestions, and build subset or ego-graph artifacts.")
+
+    source_col, mode_col, limit_col = st.columns([1.0, 1.0, 0.8])
+
+    with source_col:
+        source_mode = st.selectbox("Source", ["normalized", "subset", "sample"], key="search_source_mode")
+
+    with mode_col:
+        match_mode = st.selectbox("Match mode", ["or", "and"], key="search_match_mode")
+
+    with limit_col:
+        search_limit = st.number_input("Result row limit", min_value=1, max_value=5000, value=200, step=50, key="search_limit")
+
+    selected_subset = None
+    selected_sample = None
+
+    if source_mode == "subset":
+        subset_names = [p.name for p in list_subset_dirs()]
+        selected_subset = st.selectbox("Subset source", options=subset_names if subset_names else ["<none>"], key="search_subset_name")
+    elif source_mode == "sample":
+        sample_names = [p.name for p in list_sample_parquets()]
+        selected_sample = st.selectbox("Sample source", options=sample_names if sample_names else ["<none>"], key="search_sample_name")
+
+    source_path = resolve_search_source(source_mode, selected_subset, selected_sample)
+    st.code(f"Resolved source: {source_path if source_path else 'missing'}")
+
+    if source_mode == "normalized":
+        author_index_path = AUTHOR_INDEX_NORMALIZED_PATH
+    elif source_mode == "sample":
+        author_index_path = AUTHOR_INDEX_SAMPLE_PATH
+    else:
+        author_index_path = None
+
+    indexed_authors = load_author_index(author_index_path) if author_index_path else []
+
+    query_col, suggest_col = st.columns([1.3, 1.7])
+
+    with query_col:
+        author_query = st.text_input(
+            "Author text filter",
+            value=st.session_state.get("search_author_query", ""),
+            key="search_author_query_input",
+            help="Used both for free-text search and to filter indexed suggestions.",
+        )
+        suggestion_limit = st.number_input("Suggestion limit", min_value=5, max_value=100, value=20, step=5, key="search_suggestion_limit")
+
+    with suggest_col:
+        suggestions = suggest_authors(indexed_authors, author_query, limit=int(suggestion_limit)) if indexed_authors else []
+        selected_authors = st.multiselect(
+            "Indexed author selection",
+            options=suggestions,
+            default=st.session_state.get("search_selected_authors", []),
+            key="search_selected_authors_input",
+            help="Exact author names from the extracted author index.",
+        )
+
+    effective_queries = selected_authors if selected_authors else ([author_query.strip()] if author_query.strip() else [])
+
+    if st.button("Search author(s)", width="stretch", key="search_author_button"):
+        if not source_path:
+            raise_ui_error("Selected source is missing.")
+        elif not effective_queries:
+            raise_ui_error("Provide a text query or choose at least one indexed author.")
+        else:
+            try:
+                rows = search_author_records_multi(
+                    source_path,
+                    author_queries=effective_queries,
+                    limit=int(search_limit),
+                    match_mode=match_mode,
+                )
+                profile = build_author_profile(rows, author_query=" | ".join(effective_queries))
+
+                st.session_state["search_rows"] = rows
+                st.session_state["search_profile"] = profile
+                st.session_state["search_author_query"] = " | ".join(effective_queries)
+                st.session_state["search_selected_authors"] = selected_authors
+                st.success(f"Found {len(rows)} matching record(s).")
+            except Exception as exc:
+                raise_ui_error(str(exc))
+
+    rows = st.session_state.get("search_rows", [])
+    profile = st.session_state.get("search_profile")
+
+    if rows:
+        st.markdown("### Search Results")
+        results_df = build_search_results_dataframe(rows)
+        st.dataframe(results_df, width="stretch", height=420)
+
+        st.markdown("### Author Profile")
+        p1, p2, p3, p4 = st.columns(4)
+        with p1:
+            metric_card("Publications", str(profile.get("publication_count", 0)), "Matching records")
+        with p2:
+            metric_card("Year range", f"{profile.get('min_year', '-') } - {profile.get('max_year', '-')}", "Observed span")
+        with p3:
+            metric_card("Total citations", str(profile.get("total_citations", 0)), "Summed on returned rows")
+        with p4:
+            metric_card("Matched names", str(len(profile.get("matched_author_names", []))), "Distinct matching variants")
+
+        left, right = st.columns(2)
+        with left:
+            render_table_from_list("Top collaborators", profile.get("top_collaborators", []), max_rows=10)
+            render_table_from_list("Top venues", profile.get("top_venues", []), max_rows=10)
+        with right:
+            render_table_from_list("Top fields of study", profile.get("top_fos", []), max_rows=10)
+            render_json_summary("Matched author names", {"matched_author_names": profile.get("matched_author_names", [])})
+
+        effective_label = "_and_".join(slugify(name) for name in effective_queries) if match_mode == "and" else "_or_".join(slugify(name) for name in effective_queries)
+        author_slug = effective_label[:120] if effective_label else slugify(st.session_state["search_author_query"])
+
+        search_csv_path = SEARCH_DIR / f"author_search_{author_slug}_results.csv"
+        search_profile_path = SEARCH_DIR / f"author_search_{author_slug}_profile.json"
+        subset_name = f"author_{author_slug}"
+        ego_graph_name = f"author_{author_slug}_ego_collaboration"
+        ego_graph_path = GRAPHS_DIR / f"{ego_graph_name}.gexf"
+        ego_analysis_path = METRICS_DIR / f"{ego_graph_name}_analysis.json"
+        ego_report_path = REPORTS_DIR / f"{ego_graph_name}_report.md"
+
+        action_a, action_b, action_c = st.columns(3)
+
+        with action_a:
+            if st.button("Export search CSV", width="stretch", key="search_export_csv"):
+                try:
+                    export_search_results_csv(rows, search_csv_path)
+                    search_profile_path.write_text(json.dumps(profile, indent=4, ensure_ascii=False), encoding="utf-8")
+                    st.success("Saved search artifacts under outputs/search/")
+                except Exception as exc:
+                    raise_ui_error(str(exc))
+
+        with action_b:
+            if st.button("Create author subset", width="stretch", key="search_create_subset"):
+                if not source_path:
+                    raise_ui_error("Source path missing.")
+                elif len(effective_queries) != 1:
+                    raise_ui_error("V10 currently supports subset creation for one selected author at a time.", category="warning")
+                else:
+                    command = [
+                        PYTHON_EXECUTABLE,
+                        "scripts/create_author_subset.py",
+                        "--input",
+                        str(source_path),
+                        "--author-query",
+                        effective_queries[0],
+                        "--output-root",
+                        str(SUBSETS_DIR),
+                        "--subset-name",
+                        subset_name,
+                        "--overwrite",
+                    ]
+                    success, output = run_command(
+                        command,
+                        stage="create_author_subset",
+                        parameters={"author_query": effective_queries[0]},
+                        outputs={"subset_name": subset_name},
+                    )
+                    st.code(output)
+                    if success:
+                        st.success(f"Subset created: {subset_name}")
+                    else:
+                        st.error("Subset creation failed.")
+
+        with action_c:
+            if st.button("Build ego graph", width="stretch", key="search_build_ego"):
+                if not source_path:
+                    raise_ui_error("Source path missing.")
+                elif len(effective_queries) != 1:
+                    raise_ui_error("V10 currently supports ego graph creation for one selected author at a time.", category="warning")
+                else:
+                    command = [
+                        PYTHON_EXECUTABLE,
+                        "scripts/build_author_ego_graph.py",
+                        "--input",
+                        str(source_path),
+                        "--author-query",
+                        effective_queries[0],
+                        "--output-dir",
+                        str(GRAPHS_DIR),
+                        "--graph-name",
+                        ego_graph_name,
+                        "--overwrite",
+                    ]
+                    success, output = run_command(
+                        command,
+                        stage="build_author_ego_graph",
+                        parameters={"author_query": effective_queries[0]},
+                        outputs={"graph_name": ego_graph_name},
+                    )
+                    st.code(output)
+                    if success:
+                        st.success(f"Ego graph created: {ego_graph_name}")
+                    else:
+                        st.error("Ego graph build failed.")
+
+        action_d, action_e, action_f = st.columns(3)
+
+        with action_d:
+            if st.button("Analyze ego graph", width="stretch", key="search_analyze_ego"):
+                if not ego_graph_path.exists():
+                    raise_ui_error(f"Graph file not found: {ego_graph_path.name}")
+                else:
+                    command = [
+                        PYTHON_EXECUTABLE,
+                        "scripts/analyze_graph.py",
+                        "--input",
+                        str(ego_graph_path),
+                        "--output",
+                        str(ego_analysis_path),
+                        "--top-n",
+                        "10",
+                        "--betweenness-sample-k",
+                        "100",
+                    ]
+                    success, output = run_command(
+                        command,
+                        stage="analyze_author_ego_graph",
+                        parameters={"graph_name": ego_graph_name},
+                        outputs={"analysis": ego_analysis_path.name},
+                    )
+                    st.code(output)
+                    if success:
+                        st.success("Ego graph analysis completed.")
+                    else:
+                        st.error("Ego graph analysis failed.")
+
+        with action_e:
+            if st.button("Export ego report", width="stretch", key="search_export_ego_report"):
+                if not ego_analysis_path.exists():
+                    raise_ui_error(f"Analysis file not found: {ego_analysis_path.name}")
+                else:
+                    command = [
+                        PYTHON_EXECUTABLE,
+                        "scripts/export_analysis_report.py",
+                        "--input",
+                        str(ego_analysis_path),
+                        "--output",
+                        str(ego_report_path),
+                        "--name",
+                        ego_graph_name,
+                    ]
+                    success, output = run_command(
+                        command,
+                        stage="export_author_ego_report",
+                        parameters={"analysis": ego_analysis_path.name},
+                        outputs={"report": ego_report_path.name},
+                    )
+                    st.code(output)
+                    if success:
+                        st.success("Ego report exported.")
+                    else:
+                        st.error("Ego report export failed.")
+
+        with action_f:
+            if st.button("Open in Insights", width="stretch", key="search_open_in_insights"):
+                st.session_state["insights_base_name"] = ego_graph_name
+                st.session_state["insights_graph_type"] = "collaboration"
+                st.success(f"Insights target set to: {ego_graph_name}. Open the Insights tab to inspect it.")
+
+        preview_left, preview_right = st.columns(2)
+        with preview_left:
+            subset_summary = read_json_if_exists(SUBSETS_DIR / subset_name / "_subset_summary.json")
+            render_json_summary("Author subset summary", subset_summary)
+            graph_summary = read_json_if_exists(GRAPHS_DIR / f"{ego_graph_name}_summary.json")
+            render_json_summary("Ego graph summary", graph_summary)
+        with preview_right:
+            analysis_summary = read_json_if_exists(ego_analysis_path)
+            render_json_summary("Ego graph analysis", analysis_summary)
+            report_preview = read_text_if_exists(ego_report_path)
+            if report_preview:
+                st.markdown("#### Ego report preview")
+                st.text_area("Report preview", report_preview[:4000], height=220, key="search_report_preview")
 
 with demo_tab:
     section_header("Demo Workflow", "Create or select a sample, then build, analyze and report on it end to end.")
@@ -685,8 +1023,14 @@ with graph_tab:
 with analyze_tab:
     section_header("Analyze Graph", "Run graph analytics and generate reusable analysis outputs.")
     graph_bases = extract_graph_base_names()
-    selected_base = st.selectbox("Choose graph base name", options=graph_bases if graph_bases else ["<none>"], index=0)
+    selected_base_default = st.session_state.get("insights_base_name")
     selected_graph_type = st.selectbox("Graph type to analyze", ["citation", "collaboration"], key="analysis_graph_type")
+
+    selected_index = 0
+    if selected_base_default and selected_base_default in graph_bases:
+        selected_index = graph_bases.index(selected_base_default)
+
+    selected_base = st.selectbox("Choose graph base name", options=graph_bases if graph_bases else ["<none>"], index=selected_index if graph_bases else 0)
     top_n = st.number_input("Top N", min_value=1, max_value=100, value=10)
     exact_betweenness = st.checkbox("Exact betweenness (slow)", value=False)
     betweenness_sample_k = st.number_input("Betweenness sample k", min_value=10, max_value=5000, value=200)
@@ -735,8 +1079,17 @@ with analyze_tab:
 with insights_tab:
     section_header("Graph Insights Dashboard", "Inspect rankings, node details, exports, and markdown reports.")
     analysis_bases = extract_analysis_base_names()
-    selected_insight_base = st.selectbox("Choose analysis base name", options=analysis_bases if analysis_bases else ["<none>"], index=0)
-    selected_insight_type = st.selectbox("Analysis graph type", ["citation", "collaboration"], key="insight_graph_type")
+
+    selected_base_default = st.session_state.get("insights_base_name")
+    selected_type_default = st.session_state.get("insights_graph_type", "collaboration")
+
+    base_index = 0
+    if selected_base_default and selected_base_default in analysis_bases:
+        base_index = analysis_bases.index(selected_base_default)
+
+    selected_insight_base = st.selectbox("Choose analysis base name", options=analysis_bases if analysis_bases else ["<none>"], index=base_index if analysis_bases else 0)
+    type_index = 0 if selected_type_default == "citation" else 1
+    selected_insight_type = st.selectbox("Analysis graph type", ["citation", "collaboration"], key="insight_graph_type", index=type_index)
 
     if selected_insight_base != "<none>":
         analysis_path = METRICS_DIR / f"{selected_insight_base}_{selected_insight_type}_analysis.json"
@@ -877,6 +1230,16 @@ with compare_tab:
         compare_rows = [{"metric": m, "A": a, "B": b} for m, a, b in metrics]
         st.dataframe(pd.DataFrame(compare_rows), width="stretch")
 
+        st.markdown("### PageRank Comparison")
+        pagerank_compare = comparison_dataframe(
+            analysis_a.get("pagerank", []),
+            analysis_b.get("pagerank", []),
+            "A",
+            "B",
+            top_n=10,
+        )
+        st.dataframe(pagerank_compare, width="stretch", height=420)
+
 with quality_tab:
     section_header("Data Quality Dashboard", "Profile normalized data, subsets, or samples.")
     quality_input_mode = st.selectbox("Quality source", ["normalized", "subset", "sample"])
@@ -950,6 +1313,7 @@ with artifacts_tab:
     section_header("Artifacts Explorer", "Browse generated files across the project.")
     c1, c2 = st.columns(2)
     with c1:
+        render_files_list("Search files", list_relative_files(SEARCH_DIR, limit=30))
         render_files_list("Sample files", list_relative_files(SAMPLE_DIR, limit=30))
         render_files_list("Graph files", list_relative_files(GRAPHS_DIR, limit=30))
         render_files_list("Report files", list_relative_files(REPORTS_DIR, suffix=".md", limit=30))

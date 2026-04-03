@@ -1,5 +1,6 @@
 # Python
 __pycache__/
+.pytest_cache/
 *.py[cod]
 *.pyo
 *.pyd
@@ -7,7 +8,6 @@ __pycache__/
 *.egg-info/
 build/
 dist/
-.ps1
 
 # Virtual environments
 .venv/
@@ -22,28 +22,56 @@ env/
 .DS_Store
 Thumbs.db
 
-# Logs
+# Logs / env
 *.log
-
-# Local config
 .env
-
-# Git / caches
 .ipynb_checkpoints/
 
-# Raw / heavy data
+# Temporary / local generated files
+.tmp/
+*.tmp
+
+# Large data folders
 data/raw/*
 data/interim/*
 data/processed/*
 !data/raw/.gitkeep
+!data/interim/.gitkeep
+!data/processed/.gitkeep
 !data/sample/.gitkeep
 
-# Outputs
+# Sample data
+# Keep only lightweight demo/sample assets if you explicitly want them versioned.
+# Otherwise uncomment the next line:
+# data/sample/*
+
+# Reference caches
+data/reference/author_index_normalized.json
+data/reference/author_index_sample.json
+
+# Generated outputs
 outputs/graphs/*
 outputs/metrics/*
 outputs/figures/*
+outputs/reports/*
+outputs/search/*
+outputs/quality/*
+outputs/exports/*
+outputs/manifests/*
+
 !outputs/graphs/.gitkeep
 !outputs/metrics/.gitkeep
 !outputs/figures/.gitkeep
+!outputs/reports/.gitkeep
+!outputs/search/.gitkeep
+!outputs/quality/.gitkeep
+!outputs/exports/.gitkeep
+!outputs/manifests/.gitkeep
+
+# Keep selected lightweight inspection artifacts
 !outputs/inspection/raw_profile.json
 !outputs/inspection/raw_samples.json
+
+# Optional extra safety by extension
+*.parquet
+*.gexf
