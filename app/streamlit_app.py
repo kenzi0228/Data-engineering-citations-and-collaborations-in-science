@@ -1702,48 +1702,181 @@ with insights_tab:
             st.text_area("Report preview", report_text[:5000], height=300)
 
 with compare_tab:
-    section_header("Graph Comparison Dashboard", "Compare two analysis outputs side by side.")
-    analysis_bases = extract_analysis_base_names()
-    col_a, col_b = st.columns(2)
+    section_header("Compare", "Compare two authors or two publications using graph connectivity and shortest paths.")
 
-    with col_a:
-        st.markdown("### Analysis A")
-        base_a = st.selectbox("Base name A", options=analysis_bases if analysis_bases else ["<none>"], key="base_a")
-        type_a = st.selectbox("Type A", ["citation", "collaboration"], key="type_a")
+    compare_mode = st.selectbox(
+        "Comparison mode",
+        ["authors", "publications"],
+        key="compare_mode",
+    )
 
-    with col_b:
-        st.markdown("### Analysis B")
-        base_b = st.selectbox("Base name B", options=analysis_bases if analysis_bases else ["<none>"], key="base_b")
-        type_b = st.selectbox("Type B", ["citation", "collaboration"], key="type_b")
+    if compare_mode == "authors":
+        graph_type = "collaboration"
+        st.info("Author comparison uses collaboration graphs.")
+    else:
+        graph_type = "citation"
+        st.info("Publication comparison uses citation graphs.")
 
-    analysis_a = read_json_if_exists(METRICS_DIR / f"{base_a}_{type_a}_analysis.json") if base_a != "<none>" else None
-    analysis_b = read_json_if_exists(METRICS_DIR / f"{base_b}_{type_b}_analysis.json") if base_b != "<none>" else None
+    graph_bases = extract_graph_base_names()
+    selected_base = st.selectbox(
+        "Graph base name",
+        options=graph_bases if graph_bases else ["<none>"],
+        key="compare_graph_base",
+    )
 
-    if isinstance(analysis_a, dict) and isinstance(analysis_b, dict):
-        summary_a = analysis_a.get("summary", {})
-        summary_b = analysis_b.get("summary", {})
+    max_paths = st.number_input(
+        "Maximum shortest paths",
+        min_value=1,
+        max_value=20,
+        value=5,
+        step=1,
+        key="compare_max_paths",
+    )
 
-        metrics = [
-            ("Nodes", summary_a.get("num_nodes", ""), summary_b.get("num_nodes", "")),
-            ("Edges", summary_a.get("num_edges", ""), summary_b.get("num_edges", "")),
-            ("Density", summary_a.get("density", ""), summary_b.get("density", "")),
-            ("Diameter", summary_a.get("largest_component_diameter", ""), summary_b.get("largest_component_diameter", "")),
-            ("Communities", analysis_a.get("communities", {}).get("num_communities", ""), analysis_b.get("communities", {}).get("num_communities", "")),
-        ]
+    if selected_base != "<none>":
+        graph_path = GRAPHS_DIR / f"{selected_base}_{graph_type}.gexf"
+    else:
+        graph_path = GRAPHS_DIR / "missing.gexf"
 
-        st.markdown("### KPI Comparison")
-        compare_rows = [{"metric": m, "A": a, "B": b} for m, a, b in metrics]
-        st.dataframe(pd.DataFrame(compare_rows), width="stretch")
+    st.code(f"Graph path: {graph_path}")
 
-        st.markdown("### PageRank Comparison")
-        pagerank_compare = comparison_dataframe(
-            analysis_a.get("pagerank", []),
-            analysis_b.get("pagerank", []),
-            "A",
-            "B",
-            top_n=10,
+    if graph_path.exists():
+        try:
+            catalog = load_graph_node_catalog(str(graph_path))
+
+            if compare_mode == "authors":
+                catalog = [row for row in catalog if row.get("node_type") in {"author", ""}]
+            else:
+                catalog = [row for row in catalog if row.get("node_type") in {"publication", ""}]
+
+            st.caption(f"Loaded {len(catalog)} comparable node(s).")
+
+            col1, col2, col3 = st.columns([1.2, 1.2, 0.8])
+
+            with col1:
+                source_filter = st.text_input("First item filter", value="", key="compare_source_filter")
+                source_candidates = filter_node_catalog(catalog, source_filter, limit=100)
+                source_options = [f"{row['display_name']} | {row['node_id']}" for row in source_candidates]
+                selected_source_label = st.selectbox(
+                    "First item",
+                    options=source_options if source_options else ["<none>"],
+                    key="compare_source_label",
+                )
+
+            with col2:
+                target_filter = st.text_input("Second item filter", value="", key="compare_target_filter")
+                target_candidates = filter_node_catalog(catalog, target_filter, limit=100)
+                target_options = [f"{row['display_name']} | {row['node_id']}" for row in target_candidates]
+                selected_target_label = st.selectbox(
+                    "Second item",
+                    options=target_options if target_options else ["<none>"],
+                    key="compare_target_label",
+                )
+
+            with col3:
+                st.markdown("#### Actions")
+                if st.button("Swap items", width="stretch", key="compare_swap_button"):
+                    source_value = st.session_state.get("compare_source_label", "<none>")
+                    target_value = st.session_state.get("compare_target_label", "<none>")
+                    st.session_state["compare_source_label"] = target_value
+                    st.session_state["compare_target_label"] = source_value
+                    st.rerun()
+
+                if st.button("Clear comparison", width="stretch", key="compare_clear_button"):
+                    st.session_state["compare_result"] = None
+                    st.rerun()
+
+            if st.button("Run comparison", width="stretch", key="compare_run_button"):
+                if selected_source_label == "<none>" or selected_target_label == "<none>":
+                    raise_ui_error("Choose both items to compare.")
+                else:
+                    try:
+                        source_node_id = selected_source_label.split(" | ")[-1]
+                        target_node_id = selected_target_label.split(" | ")[-1]
+                        graph = load_graph(str(graph_path))
+                        result = investigate_path_between_nodes(
+                            graph,
+                            source_node_id=source_node_id,
+                            target_node_id=target_node_id,
+                            max_paths=int(max_paths),
+                        )
+                        result["graph_path"] = str(graph_path)
+                        result["comparison_mode"] = compare_mode
+                        result["graph_base_name"] = selected_base
+                        st.session_state["compare_result"] = result
+                        st.success("Comparison completed.")
+                    except Exception as exc:
+                        raise_ui_error(str(exc))
+
+        except Exception as exc:
+            raise_ui_error(f"Failed to load comparison graph: {exc}")
+    else:
+        st.info("Choose an existing graph to compare nodes.")
+
+    compare_result = st.session_state.get("compare_result")
+
+    if isinstance(compare_result, dict):
+        st.markdown("### Comparison Result")
+
+        c1, c2, c3, c4 = st.columns(4)
+        with c1:
+            metric_card("Connected", "Yes" if compare_result.get("connected") else "No", "Relationship exists")
+        with c2:
+            metric_card("Distance", str(compare_result.get("shortest_path_length")), "Shortest path length")
+        with c3:
+            metric_card("Mode", str(compare_result.get("comparison_mode")), "authors or publications")
+        with c4:
+            metric_card("Returned paths", str(len(compare_result.get("all_shortest_paths_readable", []))), "Shortest paths found")
+
+        left, right = st.columns(2)
+        with left:
+            render_json_summary(
+                "Compared items",
+                {
+                    "source_node_id": compare_result.get("source_node_id"),
+                    "source_display_name": compare_result.get("source_display_name"),
+                    "target_node_id": compare_result.get("target_node_id"),
+                    "target_display_name": compare_result.get("target_display_name"),
+                },
+            )
+        with right:
+            render_json_summary(
+                "Comparison summary",
+                {
+                    "connected": compare_result.get("connected"),
+                    "shortest_path_length": compare_result.get("shortest_path_length"),
+                    "graph_path": compare_result.get("graph_path"),
+                    "graph_base_name": compare_result.get("graph_base_name"),
+                },
+            )
+
+        shortest_path_readable = compare_result.get("shortest_path_readable", [])
+        if shortest_path_readable:
+            st.markdown("#### Main comparison path")
+            labels = [step.get("display_name", step.get("node_id", "")) for step in shortest_path_readable]
+            st.code(" -> ".join(labels))
+            st.dataframe(
+                readable_path_to_dataframe(shortest_path_readable),
+                width="stretch",
+                height=min(420, 80 + 35 * len(shortest_path_readable)),
+            )
+        else:
+            st.info("No connection path found between the two selected items.")
+
+        render_readable_paths_table(compare_result.get("all_shortest_paths_readable", []), "All shortest paths")
+
+        export_json = json.dumps(compare_result, indent=4, ensure_ascii=False)
+        st.download_button(
+            "Download comparison JSON",
+            data=export_json,
+            file_name="comparison_result.json",
+            mime="application/json",
+            width="stretch",
+            key="compare_download_json",
         )
-        st.dataframe(pagerank_compare, width="stretch", height=420)
+
+        st.markdown("#### Raw comparison payload")
+        st.json(compare_result)
 
 
 with path_tab:
