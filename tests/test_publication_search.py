@@ -8,6 +8,7 @@ from citation_graphs.publication_graphs import (
     build_publication_neighborhood_graph_from_input,
     build_publication_neighborhood_graph_from_rows,
     create_publication_subset_from_input,
+    expand_publication_rows_with_references,
     filter_rows_for_publications,
 )
 from citation_graphs.publication_profile import build_publication_profile
@@ -70,3 +71,26 @@ def test_build_publication_neighborhood_graph_from_input(tmp_path: Path, mini_pa
     assert result["num_nodes"] >= 1
     assert (tmp_path / "publication_graph_analytics_for_science_citation.gexf").exists()
     assert (tmp_path / "publication_graph_analytics_for_science_citation_summary.json").exists()
+
+
+def test_expand_publication_rows_with_references(mini_parquet: Path) -> None:
+    from citation_graphs.graph_build_optimized import load_graph_build_rows
+
+    all_rows, _meta = load_graph_build_rows(mini_parquet)
+    seed_rows = [row for row in all_rows if row.get("title") == "Graph Analytics for Science"]
+    expanded = expand_publication_rows_with_references(all_rows, seed_rows)
+
+    assert len(expanded) >= len(seed_rows)
+
+
+def test_build_publication_neighborhood_graph_seed_references(mini_parquet: Path) -> None:
+    from citation_graphs.graph_build_optimized import load_graph_build_rows
+
+    all_rows, _meta = load_graph_build_rows(mini_parquet)
+    seed_rows = [row for row in all_rows if row.get("title") == "Graph Analytics for Science"]
+    graph = build_publication_neighborhood_graph_from_rows(
+        all_rows,
+        neighborhood_mode="seed_references",
+        seed_rows=seed_rows,
+    )
+    assert graph.number_of_nodes() >= 1

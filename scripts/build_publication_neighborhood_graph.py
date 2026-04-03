@@ -20,6 +20,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--title-query", required=True, help="Publication title query")
     parser.add_argument("--output-dir", required=True, help="Graphs output directory")
     parser.add_argument("--graph-name", help="Optional graph name")
+    parser.add_argument("--neighborhood-mode", choices=["seed_only", "seed_references"], default="seed_only", help="Publication neighborhood expansion mode")
     parser.add_argument("--overwrite", action="store_true", help="Overwrite graph outputs if they exist")
     return parser.parse_args()
 
@@ -47,6 +48,7 @@ def main() -> None:
         title_query=args.title_query,
         output_dir=output_dir,
         graph_name=graph_name,
+        neighborhood_mode=args.neighborhood_mode,
     )
 
     print("Publication neighborhood graph build completed.")
