@@ -19,6 +19,7 @@ from citation_graphs.author_index import load_author_index, suggest_authors
 from citation_graphs.author_profile import build_author_profile
 from citation_graphs.fos_index import load_fos_index
 from citation_graphs.manifests import append_pipeline_run, read_pipeline_runs
+from citation_graphs.path_finder import investigate_path_between_nodes, load_graph
 from citation_graphs.search import export_search_results_csv, search_author_records, search_author_records_multi, slugify
 
 PYTHON_EXECUTABLE = sys.executable
@@ -146,6 +147,51 @@ def extract_analysis_base_names() -> list[str]:
         elif name.endswith("_collaboration_analysis.json"):
             base_names.add(name.replace("_collaboration_analysis.json", ""))
     return sorted(base_names)
+
+
+@st.cache_data(show_spinner=False)
+def load_graph_node_catalog(graph_path_str: str) -> list[dict[str, str]]:
+    graph = load_graph(graph_path_str)
+    rows = []
+    for node_id, attrs in graph.nodes(data=True):
+        display_name = (
+            attrs.get("display_name")
+            or attrs.get("title")
+            or attrs.get("name")
+            or attrs.get("label")
+            or str(node_id)
+        )
+        rows.append(
+            {
+                "node_id": str(node_id),
+                "display_name": str(display_name),
+                "node_type": str(attrs.get("node_type") or ""),
+            }
+        )
+    rows.sort(key=lambda x: x["display_name"].lower())
+    return rows
+
+
+def filter_node_catalog(rows: list[dict[str, str]], query: str, limit: int = 50) -> list[dict[str, str]]:
+    query = (query or "").strip().lower()
+    if not query:
+        return rows[:limit]
+
+    starts = [row for row in rows if row["display_name"].lower().startswith(query)]
+    contains = [row for row in rows if query in row["display_name"].lower() and row not in starts]
+    return (starts + contains)[:limit]
+
+
+def render_readable_paths(paths: list[list[dict[str, str]]], title: str) -> None:
+    st.markdown(f"#### {title}")
+    if not paths:
+        st.info("No paths available.")
+        return
+
+    for idx, path in enumerate(paths, start=1):
+        labels = [step.get("display_name", step.get("node_id", "")) for step in path]
+        st.markdown(f"**Path {idx}**")
+        st.code(" -> ".join(labels))
 
 
 @st.cache_data(show_spinner=False)
@@ -318,7 +364,7 @@ if "insights_graph_type" not in st.session_state:
 st.title("Citation & Collaboration Graph Pipeline")
 st.caption("Quick Start: 1) inspect raw data, 2) normalize, 3) create a subset, 4) build a graph, 5) run analysis, 6) explore insights, comparisons, quality and reports.")
 
-overview_tab, search_tab, demo_tab, inspect_tab, normalize_tab, filter_tab, graph_tab, analyze_tab, insights_tab, compare_tab, quality_tab, history_tab, artifacts_tab = st.tabs(
+overview_tab, search_tab, demo_tab, inspect_tab, normalize_tab, filter_tab, graph_tab, analyze_tab, insights_tab, compare_tab, path_tab, quality_tab, history_tab, artifacts_tab = st.tabs(
     [
         "Overview",
         "Search",
@@ -330,6 +376,7 @@ overview_tab, search_tab, demo_tab, inspect_tab, normalize_tab, filter_tab, grap
         "Analyze Graph",
         "Insights",
         "Compare",
+        "Path Finder",
         "Data Quality",
         "Run History",
         "Artifacts",
@@ -1314,6 +1361,124 @@ with compare_tab:
             top_n=10,
         )
         st.dataframe(pagerank_compare, width="stretch", height=420)
+
+
+with path_tab:
+    section_header("Path Finder", "Investigate whether two nodes are connected and inspect the shortest path between them.")
+
+    graph_bases = extract_graph_base_names()
+    graph_type = st.selectbox("Graph type", ["collaboration", "citation"], key="path_graph_type")
+    selected_base = st.selectbox("Graph base name", options=graph_bases if graph_bases else ["<none>"], key="path_graph_base")
+
+    max_paths = st.number_input("Maximum shortest paths to display", min_value=1, max_value=20, value=5, step=1, key="path_max_paths")
+
+    if selected_base != "<none>":
+        graph_path = GRAPHS_DIR / f"{selected_base}_{graph_type}.gexf"
+    else:
+        graph_path = GRAPHS_DIR / "missing.gexf"
+
+    st.code(f"Graph path: {graph_path}")
+
+    if graph_path.exists():
+        try:
+            catalog = load_graph_node_catalog(str(graph_path))
+            st.caption(f"Loaded {len(catalog)} node(s) from the graph.")
+
+            col1, col2 = st.columns(2)
+
+            with col1:
+                source_filter = st.text_input("Source filter", value="", key="path_source_filter")
+                source_candidates = filter_node_catalog(catalog, source_filter, limit=50)
+                source_options = [f"{row['display_name']} | {row['node_id']}" for row in source_candidates]
+                selected_source_label = st.selectbox(
+                    "Source node",
+                    options=source_options if source_options else ["<none>"],
+                    key="path_source_label",
+                )
+
+            with col2:
+                target_filter = st.text_input("Target filter", value="", key="path_target_filter")
+                target_candidates = filter_node_catalog(catalog, target_filter, limit=50)
+                target_options = [f"{row['display_name']} | {row['node_id']}" for row in target_candidates]
+                selected_target_label = st.selectbox(
+                    "Target node",
+                    options=target_options if target_options else ["<none>"],
+                    key="path_target_label",
+                )
+
+            if st.button("Investigate path", width="stretch", key="path_investigate_button"):
+                if selected_source_label == "<none>" or selected_target_label == "<none>":
+                    raise_ui_error("Choose both source and target nodes.")
+                else:
+                    try:
+                        source_node_id = selected_source_label.split(" | ")[-1]
+                        target_node_id = selected_target_label.split(" | ")[-1]
+                        graph = load_graph(str(graph_path))
+                        result = investigate_path_between_nodes(
+                            graph,
+                            source_node_id=source_node_id,
+                            target_node_id=target_node_id,
+                            max_paths=int(max_paths),
+                        )
+                        st.session_state["path_finder_result"] = result
+                        st.success("Path investigation completed.")
+                    except Exception as exc:
+                        raise_ui_error(str(exc))
+
+        except Exception as exc:
+            raise_ui_error(f"Failed to load graph catalog: {exc}")
+    else:
+        st.info("Choose a graph that exists in outputs/graphs first.")
+
+    result = st.session_state.get("path_finder_result")
+
+    if isinstance(result, dict):
+        st.markdown("### Path Investigation Result")
+
+        c1, c2, c3, c4 = st.columns(4)
+        with c1:
+            metric_card("Connected", "Yes" if result.get("connected") else "No", "Path exists or not")
+        with c2:
+            metric_card("Distance", str(result.get("shortest_path_length")), "Number of hops")
+        with c3:
+            metric_card("Directed graph", "Yes" if result.get("graph_is_directed") else "No", "Graph orientation")
+        with c4:
+            metric_card("Max paths", str(result.get("max_paths_requested")), "Requested path cap")
+
+        left, right = st.columns(2)
+        with left:
+            render_json_summary(
+                "Endpoints",
+                {
+                    "source_node_id": result.get("source_node_id"),
+                    "source_display_name": result.get("source_display_name"),
+                    "target_node_id": result.get("target_node_id"),
+                    "target_display_name": result.get("target_display_name"),
+                },
+            )
+        with right:
+            render_json_summary(
+                "Connectivity Summary",
+                {
+                    "connected": result.get("connected"),
+                    "shortest_path_length": result.get("shortest_path_length"),
+                    "graph_is_directed": result.get("graph_is_directed"),
+                },
+            )
+
+        shortest_path_readable = result.get("shortest_path_readable", [])
+        if shortest_path_readable:
+            st.markdown("#### Main shortest path")
+            main_labels = [step.get("display_name", step.get("node_id", "")) for step in shortest_path_readable]
+            st.code(" -> ".join(main_labels))
+        else:
+            st.info("No shortest path available.")
+
+        render_readable_paths(result.get("all_shortest_paths_readable", []), "All shortest paths")
+
+        st.markdown("#### Raw investigation payload")
+        st.json(result)
+
 
 with quality_tab:
     section_header("Data Quality Dashboard", "Profile normalized data, subsets, or samples.")
