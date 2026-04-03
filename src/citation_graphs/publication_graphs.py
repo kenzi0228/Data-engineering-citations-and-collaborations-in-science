@@ -22,6 +22,42 @@ def filter_rows_for_publications(
     return [row for row in rows if q in str(row.get("title") or "").lower()]
 
 
+def expand_publication_rows_with_references(
+    all_rows: list[dict[str, Any]],
+    seed_rows: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    by_paper_id: dict[str, dict[str, Any]] = {}
+    for row in all_rows:
+        paper_id = row.get("paper_id")
+        if paper_id:
+            by_paper_id[str(paper_id)] = row
+
+    selected_ids: set[str] = set()
+    expanded_rows: list[dict[str, Any]] = []
+
+    for row in seed_rows:
+        paper_id = row.get("paper_id")
+        if paper_id:
+            paper_id = str(paper_id)
+            if paper_id not in selected_ids:
+                selected_ids.add(paper_id)
+                expanded_rows.append(row)
+
+    for row in seed_rows:
+        for ref in row.get("references", []) or []:
+            ref_id = str(ref).strip()
+            if not ref_id:
+                continue
+            if ref_id in selected_ids:
+                continue
+            ref_row = by_paper_id.get(ref_id)
+            if ref_row is not None:
+                selected_ids.add(ref_id)
+                expanded_rows.append(ref_row)
+
+    return expanded_rows
+
+
 def save_publication_subset_parquet(
     rows: list[dict[str, Any]],
     output_dir: str | Path,
@@ -105,8 +141,23 @@ def save_publication_graph_outputs(
     return summary
 
 
-def build_publication_neighborhood_graph_from_rows(rows: list[dict[str, Any]]) -> nx.DiGraph:
-    return build_citation_graph(rows)
+def build_publication_neighborhood_graph_from_rows(
+    rows: list[dict[str, Any]],
+    neighborhood_mode: str = "seed_only",
+    seed_rows: list[dict[str, Any]] | None = None,
+) -> nx.DiGraph:
+    neighborhood_mode = (neighborhood_mode or "seed_only").strip().lower()
+
+    if neighborhood_mode == "seed_only":
+        selected_rows = rows
+    elif neighborhood_mode == "seed_references":
+        if seed_rows is None:
+            raise ValueError("seed_rows are required when neighborhood_mode='seed_references'")
+        selected_rows = expand_publication_rows_with_references(rows, seed_rows)
+    else:
+        raise ValueError("Unsupported neighborhood_mode. Use 'seed_only' or 'seed_references'.")
+
+    return build_citation_graph(selected_rows)
 
 
 def build_publication_neighborhood_graph_from_input(
@@ -115,19 +166,59 @@ def build_publication_neighborhood_graph_from_input(
     output_dir: str | Path,
     graph_name: str | None = None,
     limit: int = 1_000_000,
+    neighborhood_mode: str = "seed_only",
 ) -> dict[str, Any]:
-    rows = search_publication_records(
+    all_rows = search_publication_records(
+        input_path=input_path,
+        title_query="",
+        limit=limit,
+    ) if False else search_publication_records(
         input_path=input_path,
         title_query=title_query,
         limit=limit,
     )
-    filtered = filter_rows_for_publications(rows, title_query=title_query)
-    graph = build_publication_neighborhood_graph_from_rows(filtered)
+
+    # Re-read broader rows only when neighborhood expansion is requested.
+    if neighborhood_mode == "seed_references":
+        from citation_graphs.graph_build_optimized import load_graph_build_rows
+        broader_rows, _meta = load_graph_build_rows(input_path)
+        seed_rows = filter_rows_for_publications(
+            search_publication_records(
+                input_path=input_path,
+                title_query=title_query,
+                limit=limit,
+            ),
+            title_query=title_query,
+        )
+        graph = build_publication_neighborhood_graph_from_rows(
+            broader_rows,
+            neighborhood_mode=neighborhood_mode,
+            seed_rows=seed_rows,
+        )
+    else:
+        filtered = filter_rows_for_publications(
+            search_publication_records(
+                input_path=input_path,
+                title_query=title_query,
+                limit=limit,
+            ),
+            title_query=title_query,
+        )
+        graph = build_publication_neighborhood_graph_from_rows(
+            filtered,
+            neighborhood_mode=neighborhood_mode,
+            seed_rows=filtered,
+        )
 
     resolved_graph_name = graph_name or f"publication_{slugify(title_query)}_citation"
-    return save_publication_graph_outputs(
+    summary = save_publication_graph_outputs(
         graph,
         output_dir=output_dir,
         graph_name=resolved_graph_name,
         source_parquet=input_path,
     )
+    summary["neighborhood_mode"] = neighborhood_mode
+
+    summary_path = Path(output_dir) / f"{resolved_graph_name}_summary.json"
+    summary_path.write_text(json.dumps(summary, indent=4, ensure_ascii=False), encoding="utf-8")
+    return summary
