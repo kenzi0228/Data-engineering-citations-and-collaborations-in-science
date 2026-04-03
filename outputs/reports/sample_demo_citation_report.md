@@ -1,6 +1,6 @@
 # Graph Analysis Report - sample_demo_citation
 
-_Generated on 2026-04-02T18:46:22.636204+00:00_
+_Generated on 2026-04-03T07:26:16.861472+00:00_
 
 ## Executive Summary
 
@@ -10,10 +10,10 @@ _Generated on 2026-04-02T18:46:22.636204+00:00_
 - **Density**: 7.731217871498497e-05
 - **Largest component nodes**: 5900
 - **Largest component edges**: 6362
-- **Largest component diameter**: 22
+- **Largest component diameter**: 26
 - **Diameter mode**: approximate
 - **Largest component average clustering**: 0.0027832388621059747
-- **Communities detected**: 653
+- **Communities detected**: 655
 
 ## Top PageRank
 
@@ -79,13 +79,13 @@ _Generated on 2026-04-02T18:46:22.636204+00:00_
 
 | community_id | size |
 | --- | --- |
-| 18 | 455 |
-| 112 | 398 |
-| 23 | 372 |
-| 141 | 225 |
-| 229 | 203 |
+| 222 | 456 |
+| 247 | 405 |
+| 17 | 321 |
+| 53 | 222 |
+| 101 | 215 |
+| 125 | 197 |
 | 2 | 196 |
 | 10 | 195 |
-| 46 | 190 |
-| 335 | 184 |
-| 373 | 173 |
+| 230 | 187 |
+| 339 | 184 |

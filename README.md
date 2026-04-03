@@ -525,7 +525,6 @@ Some limitations still remain:
 
 Possible next steps include:
 
-- final README screenshots and diagrams
 - richer graph visual previews
 - text cleaning for problematic source encodings
 - stronger end-to-end pipeline validation
