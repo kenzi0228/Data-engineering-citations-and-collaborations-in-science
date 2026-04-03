@@ -258,6 +258,108 @@ def render_readable_paths_table(paths: list[list[dict[str, str]]], title: str) -
             st.dataframe(readable_path_to_dataframe(path), width="stretch", height=min(420, 80 + 35 * len(path)))
 
 
+def safe_get(d: dict | None, *keys, default=None):
+    current = d
+    for key in keys:
+        if not isinstance(current, dict):
+            return default
+        current = current.get(key)
+    return current if current is not None else default
+
+
+def build_graph_health_summary(analysis: dict | None, graph_summary: dict | None = None) -> dict:
+    summary = safe_get(analysis, "summary", default={}) or {}
+    communities = safe_get(analysis, "communities", default={}) or {}
+
+    return {
+        "directed": summary.get("directed"),
+        "num_nodes": summary.get("num_nodes"),
+        "num_edges": summary.get("num_edges"),
+        "density": summary.get("density"),
+        "largest_component_nodes": summary.get("largest_component_nodes"),
+        "largest_component_edges": summary.get("largest_component_edges"),
+        "largest_component_diameter": summary.get("largest_component_diameter"),
+        "diameter_mode": summary.get("diameter_mode"),
+        "largest_component_avg_clustering": summary.get("largest_component_avg_clustering"),
+        "num_communities": communities.get("num_communities"),
+        "build_total_seconds": safe_get(graph_summary, "total_seconds"),
+        "build_load_seconds": safe_get(graph_summary, "load_seconds"),
+        "build_build_seconds": safe_get(graph_summary, "build_seconds"),
+        "build_write_seconds": safe_get(graph_summary, "write_seconds"),
+    }
+
+
+def build_graph_narrative_insights(analysis: dict | None, graph_summary: dict | None = None) -> list[str]:
+    health = build_graph_health_summary(analysis, graph_summary)
+    insights = []
+
+    num_nodes = health.get("num_nodes")
+    density = health.get("density")
+    num_communities = health.get("num_communities")
+    largest_component_nodes = health.get("largest_component_nodes")
+    build_total_seconds = health.get("build_total_seconds")
+
+    if num_nodes is not None:
+        if num_nodes < 50:
+            insights.append("This graph is small and likely easier to inspect manually.")
+        elif num_nodes < 1000:
+            insights.append("This graph is medium-sized and suitable for interactive inspection.")
+        else:
+            insights.append("This graph is relatively large and benefits from ranked summaries rather than manual browsing.")
+
+    if density is not None:
+        if density < 0.001:
+            insights.append("The graph is very sparse, which is typical for citation and collaboration networks.")
+        elif density < 0.01:
+            insights.append("The graph remains sparse, but local clusters may still be meaningful.")
+        else:
+            insights.append("The graph is comparatively dense, suggesting stronger local connectivity.")
+
+    if num_nodes and largest_component_nodes:
+        ratio = largest_component_nodes / num_nodes if num_nodes else 0
+        if ratio < 0.4:
+            insights.append("The largest component covers a limited share of the graph, indicating fragmentation.")
+        elif ratio < 0.8:
+            insights.append("The graph has a meaningful main component, but fragmentation is still present.")
+        else:
+            insights.append("Most nodes belong to one dominant component.")
+
+    if num_communities is not None:
+        if num_communities <= 3:
+            insights.append("Only a few communities were detected, suggesting limited modular separation.")
+        elif num_communities <= 20:
+            insights.append("The graph shows a moderate community structure.")
+        else:
+            insights.append("The graph is highly partitioned into many communities.")
+
+    if build_total_seconds is not None:
+        insights.append(f"Latest graph build recorded in {build_total_seconds}s.")
+
+    return insights
+
+
+def extract_top_list(analysis: dict | None, key: str) -> list[dict]:
+    if not isinstance(analysis, dict):
+        return []
+    if key == "pagerank":
+        return analysis.get("pagerank", []) or []
+    centralities = analysis.get("centralities", {}) or {}
+    return centralities.get(key, []) or []
+
+
+def summarize_top_metric(rows: list[dict], label: str) -> dict:
+    if not rows:
+        return {"label": label, "top_name": None, "top_score": None, "count": 0}
+
+    first = rows[0]
+    return {
+        "label": label,
+        "top_name": first.get("display_name") or first.get("node_id"),
+        "top_score": first.get("score"),
+        "count": len(rows),
+    }
+
+
 @st.cache_data(show_spinner=False)
 def get_available_fos_values() -> list[str]:
     return load_fos_index(FOS_INDEX_PATH)
@@ -1690,124 +1792,117 @@ with analyze_tab:
     render_json_details_toggle("analysis output", analysis_data, "analysis_output_full")
 
 with insights_tab:
-    section_header("Graph Insights Dashboard", "Inspect rankings, node details, exports, and markdown reports.")
+    section_header("Insights", "Inspect graph analyses, summaries, rankings, and derived interpretation layers.")
+
     analysis_bases = extract_analysis_base_names()
+    selected_base = st.selectbox(
+        "Analysis base name",
+        options=analysis_bases if analysis_bases else ["<none>"],
+        key="insights_base_name_selector",
+        index=analysis_bases.index(st.session_state["insights_base_name"]) if analysis_bases and st.session_state.get("insights_base_name") in analysis_bases else 0,
+    )
 
-    selected_base_default = st.session_state.get("insights_base_name")
-    selected_type_default = st.session_state.get("insights_graph_type", "collaboration")
+    insights_graph_type = st.selectbox(
+        "Graph type",
+        ["citation", "collaboration"],
+        key="insights_graph_type",
+    )
 
-    base_index = 0
-    if selected_base_default and selected_base_default in analysis_bases:
-        base_index = analysis_bases.index(selected_base_default)
+    if selected_base != "<none>":
+        st.session_state["insights_base_name"] = selected_base
 
-    selected_insight_base = st.selectbox("Choose analysis base name", options=analysis_bases if analysis_bases else ["<none>"], index=base_index if analysis_bases else 0)
-    type_index = 0 if selected_type_default == "citation" else 1
-    selected_insight_type = st.selectbox("Analysis graph type", ["citation", "collaboration"], key="insight_graph_type", index=type_index)
-
-    if selected_insight_base != "<none>":
-        analysis_path = METRICS_DIR / f"{selected_insight_base}_{selected_insight_type}_analysis.json"
-        analysis = read_json_if_exists(analysis_path)
-        report_path = REPORTS_DIR / f"{selected_insight_base}_{selected_insight_type}_report.md"
+    if selected_base == "<none>":
+        st.info("No analysis files available yet.")
     else:
-        analysis = None
-        analysis_path = METRICS_DIR / "analysis.json"
-        report_path = REPORTS_DIR / "analysis_report.md"
+        analysis_path = METRICS_DIR / f"{selected_base}_{insights_graph_type}_analysis.json"
+        report_path = REPORTS_DIR / f"{selected_base}_{insights_graph_type}_report.md"
+        graph_summary_path = GRAPHS_DIR / f"{selected_base}_{insights_graph_type}_summary.json"
 
-    export_dir = EXPORTS_DIR / f"{selected_insight_base}_{selected_insight_type}" if selected_insight_base != "<none>" else EXPORTS_DIR / "analysis"
+        analysis = read_json_if_exists(analysis_path)
+        graph_summary = read_json_if_exists(graph_summary_path)
+        report_preview = read_text_if_exists(report_path)
 
-    action_col1, action_col2 = st.columns(2)
+        if not analysis:
+            st.warning(f"Analysis file not found for {selected_base}_{insights_graph_type}.")
+        else:
+            health = build_graph_health_summary(analysis, graph_summary)
+            narrative = build_graph_narrative_insights(analysis, graph_summary)
 
-    with action_col1:
-        if st.button("Export analysis CSV", width="stretch"):
-            if selected_insight_base == "<none>":
-                raise_ui_error("No analysis available.")
-            else:
-                command = [
-                    PYTHON_EXECUTABLE,
-                    "scripts/export_analysis_csv.py",
-                    "--input",
-                    str(analysis_path),
-                    "--output-dir",
-                    str(export_dir),
-                ]
-                success, output = run_command(command, stage="export_analysis_csv", parameters={"analysis": analysis_path.name}, outputs={"export_dir": str(export_dir)})
-                st.code(output)
-                if success:
-                    st.success("CSV export completed.")
+            c1, c2, c3, c4 = st.columns(4)
+            with c1:
+                metric_card("Nodes", str(health.get("num_nodes")), "Graph size")
+            with c2:
+                metric_card("Edges", str(health.get("num_edges")), "Connectivity volume")
+            with c3:
+                metric_card("Density", str(health.get("density")), "Graph sparsity")
+            with c4:
+                metric_card("Communities", str(health.get("num_communities")), "Detected partitions")
+
+            c5, c6, c7, c8 = st.columns(4)
+            with c5:
+                metric_card("Largest component", str(health.get("largest_component_nodes")), "Nodes in main component")
+            with c6:
+                metric_card("Diameter", str(health.get("largest_component_diameter")), "Largest component diameter")
+            with c7:
+                metric_card("Directed", "Yes" if health.get("directed") else "No", "Graph orientation")
+            with c8:
+                metric_card("Build total", str(health.get("build_total_seconds")), "Latest recorded build time")
+
+            left, right = st.columns(2)
+            with left:
+                render_json_summary("Graph health summary", health)
+            with right:
+                if narrative:
+                    st.markdown("#### Narrative insights")
+                    for item in narrative:
+                        st.markdown(f"- {item}")
                 else:
-                    st.error("CSV export failed.")
+                    st.info("No narrative insight could be generated.")
 
-    with action_col2:
-        if st.button("Export markdown report", width="stretch"):
-            if selected_insight_base == "<none>":
-                raise_ui_error("No analysis available.")
-            else:
-                command = [
-                    PYTHON_EXECUTABLE,
-                    "scripts/export_analysis_report.py",
-                    "--input",
-                    str(analysis_path),
-                    "--output",
-                    str(report_path),
-                    "--name",
-                    f"{selected_insight_base}_{selected_insight_type}",
-                ]
-                success, output = run_command(command, stage="export_analysis_report", parameters={"analysis": analysis_path.name}, outputs={"report": str(report_path)})
-                st.code(output)
-                if success:
-                    st.success("Markdown report exported.")
-                else:
-                    st.error("Markdown report export failed.")
+            pagerank_rows = extract_top_list(analysis, "pagerank")
+            degree_rows = extract_top_list(analysis, "degree")
+            closeness_rows = extract_top_list(analysis, "closeness")
+            betweenness_rows = extract_top_list(analysis, "betweenness")
 
-    if isinstance(analysis, dict):
-        summary = analysis.get("summary", {})
-        communities = analysis.get("communities", {})
-        pagerank = analysis.get("pagerank", [])
-        degree = analysis.get("centralities", {}).get("degree", [])
-        closeness = analysis.get("centralities", {}).get("closeness", [])
-        betweenness = analysis.get("centralities", {}).get("betweenness", [])
-        node_details_index = analysis.get("node_details_index", {})
+            top_summaries = [
+                summarize_top_metric(pagerank_rows, "PageRank"),
+                summarize_top_metric(degree_rows, "Degree centrality"),
+                summarize_top_metric(closeness_rows, "Closeness centrality"),
+                summarize_top_metric(betweenness_rows, "Betweenness centrality"),
+            ]
 
-        c1, c2, c3, c4, c5 = st.columns(5)
-        with c1:
-            metric_card("Nodes", str(summary.get("num_nodes", "")), "Graph size")
-        with c2:
-            metric_card("Edges", str(summary.get("num_edges", "")), "Connectivity")
-        with c3:
-            metric_card("Density", str(summary.get("density", "")), "Global density")
-        with c4:
-            metric_card("Diameter", str(summary.get("largest_component_diameter", "")), str(summary.get("largest_component_diameter_mode", "")))
-        with c5:
-            metric_card("Communities", str(communities.get("num_communities", "")), "Detected with Louvain")
+            st.markdown("### Centrality leaders")
+            leader_cols = st.columns(4)
+            for idx, summary in enumerate(top_summaries):
+                with leader_cols[idx]:
+                    metric_card(
+                        summary["label"],
+                        str(summary["top_name"]),
+                        f"Top score: {summary['top_score']}",
+                    )
 
-        left, right = st.columns(2)
-        with left:
-            render_table_from_list("Top PageRank", pagerank, max_rows=10)
-            render_table_from_list("Top Degree", degree, max_rows=10)
-        with right:
-            render_table_from_list("Top Closeness", closeness, max_rows=10)
-            render_table_from_list("Top Betweenness", betweenness, max_rows=10)
+            ranking_left, ranking_right = st.columns(2)
+            with ranking_left:
+                render_table_from_list("Top PageRank", pagerank_rows, max_rows=10)
+                render_table_from_list("Top Degree Centrality", degree_rows, max_rows=10)
+            with ranking_right:
+                render_table_from_list("Top Closeness Centrality", closeness_rows, max_rows=10)
+                render_table_from_list("Top Betweenness Centrality", betweenness_rows, max_rows=10)
 
-        detail_options = []
-        for section in [pagerank, degree, closeness, betweenness]:
-            for row in section:
-                display_name = row.get("display_name", row.get("node_id"))
-                node_id = row.get("node_id")
-                label = f"{display_name} | {node_id}"
-                if label not in detail_options:
-                    detail_options.append(label)
+            communities = safe_get(analysis, "communities", default={}) or {}
+            render_table_from_list("Largest communities", communities.get("largest_communities", []), max_rows=10)
 
-        if detail_options:
-            selected_label = st.selectbox("Choose a ranked node", options=detail_options)
-            selected_node_id = selected_label.split(" | ")[-1]
-            selected_node_details = node_details_index.get(selected_node_id, {})
-            render_json_summary("Node details", selected_node_details)
-            render_json_details_toggle("node details", selected_node_details, "node_details_full")
+            if graph_summary:
+                st.markdown("### Graph build summary")
+                render_json_summary("Graph summary", graph_summary)
 
-        report_text = read_text_if_exists(report_path)
-        if report_text:
-            st.markdown("### Latest Markdown Report")
-            st.text_area("Report preview", report_text[:5000], height=300)
+            if report_preview:
+                st.markdown("### Report preview")
+                st.text_area("Analysis report preview", report_preview[:6000], height=260, key="insights_report_preview")
+
+            st.markdown("### Raw analysis payload")
+            st.json(analysis)
+
 
 with compare_tab:
     section_header("Compare", "Compare two authors or two publications using graph connectivity and shortest paths.")
