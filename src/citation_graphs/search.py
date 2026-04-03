@@ -45,13 +45,6 @@ def resolve_search_input(
     return path
 
 
-def _readable_input(path: Path) -> str:
-    path = Path(path)
-    if path.is_dir():
-        return str(path / "**" / "*.parquet")
-    return str(path)
-
-
 def _safe_json_loads(value: Any) -> Any:
     if not isinstance(value, str):
         return value
@@ -177,16 +170,94 @@ def _row_to_python(row: dict[str, Any]) -> dict[str, Any]:
     return converted
 
 
+def _readable_input(path: Path) -> str:
+    path = Path(path)
+    if path.is_dir():
+        return str(path / "**" / "*.parquet")
+    return str(path)
+
+
+def _resolve_normalized_partition_sources(
+    normalized_dir: Path,
+    start_year: int | None = None,
+    end_year: int | None = None,
+) -> list[str]:
+    if not normalized_dir.exists():
+        raise FileNotFoundError(f"Normalized directory not found: {normalized_dir}")
+
+    if start_year is None and end_year is None:
+        return [str(normalized_dir / "**" / "*.parquet")]
+
+    if start_year is not None and end_year is not None and start_year > end_year:
+        raise ValueError("start_year must be less than or equal to end_year")
+
+    partition_dirs = []
+    for child in normalized_dir.iterdir():
+        if not child.is_dir():
+            continue
+        name = child.name
+        if not name.startswith("year_partition="):
+            continue
+        year_str = name.replace("year_partition=", "")
+        if not year_str.isdigit():
+            continue
+        year = int(year_str)
+        if start_year is not None and year < start_year:
+            continue
+        if end_year is not None and year > end_year:
+            continue
+        partition_dirs.append(str(child / "*.parquet"))
+
+    return sorted(partition_dirs)
+
+
+def _build_source_expression(
+    input_path: Path,
+    start_year: int | None = None,
+    end_year: int | None = None,
+) -> str:
+    if input_path.is_dir():
+        sources = _resolve_normalized_partition_sources(input_path, start_year=start_year, end_year=end_year)
+        if not sources:
+            return ""
+        quoted = ", ".join(f"'{src}'" for src in sources)
+        return quoted
+    return f"'{str(input_path)}'"
+
+
+def _filter_rows_by_year_range(
+    rows: list[dict[str, Any]],
+    start_year: int | None = None,
+    end_year: int | None = None,
+) -> list[dict[str, Any]]:
+    filtered = []
+    for row in rows:
+        year_value = row.get("year_clean")
+        if year_value is None or str(year_value).strip() == "":
+            continue
+        year = int(year_value)
+        if start_year is not None and year < start_year:
+            continue
+        if end_year is not None and year > end_year:
+            continue
+        filtered.append(row)
+    return filtered
+
+
 def search_author_records(
     input_path: str | Path,
     author_query: str,
     limit: int = 200,
+    start_year: int | None = None,
+    end_year: int | None = None,
 ) -> list[dict[str, Any]]:
     return search_author_records_multi(
         input_path=input_path,
         author_queries=[author_query],
         limit=limit,
         match_mode="or",
+        start_year=start_year,
+        end_year=end_year,
     )
 
 
@@ -195,16 +266,21 @@ def search_author_records_multi(
     author_queries: list[str],
     limit: int = 200,
     match_mode: str = "or",
+    start_year: int | None = None,
+    end_year: int | None = None,
 ) -> list[dict[str, Any]]:
     cleaned_queries = [q.strip() for q in author_queries if q and q.strip()]
     if not cleaned_queries:
         raise ValueError("author_queries cannot be empty")
 
     input_path = Path(input_path)
-    source = _readable_input(input_path)
     match_mode = (match_mode or "or").strip().lower()
     if match_mode not in {"or", "and"}:
         raise ValueError("match_mode must be either 'or' or 'and'")
+
+    source_expression = _build_source_expression(input_path, start_year=start_year if input_path.is_dir() else None, end_year=end_year if input_path.is_dir() else None)
+    if not source_expression:
+        return []
 
     conditions = []
     parameters: list[Any] = []
@@ -239,7 +315,7 @@ def search_author_records_multi(
         author_ids,
         author_names,
         author_count
-    FROM read_parquet('{source}')
+    FROM read_parquet([{source_expression}])
     WHERE {where_clause}
     ORDER BY year_clean DESC NULLS LAST, n_citation DESC NULLS LAST, title ASC
     LIMIT ?
@@ -252,7 +328,12 @@ def search_author_records_multi(
     finally:
         con.close()
 
-    return [_row_to_python(row) for row in rows]
+    normalized_rows = [_row_to_python(row) for row in rows]
+
+    if input_path.is_file() and (start_year is not None or end_year is not None):
+        normalized_rows = _filter_rows_by_year_range(normalized_rows, start_year=start_year, end_year=end_year)
+
+    return normalized_rows
 
 
 def export_search_results_csv(

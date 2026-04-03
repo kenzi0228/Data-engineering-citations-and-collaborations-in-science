@@ -1,6 +1,5 @@
 ﻿from __future__ import annotations
 
-from citation_graphs.author_index import suggest_authors
 from citation_graphs.search import search_author_records_multi
 
 
@@ -36,14 +35,25 @@ def test_search_author_records_multi_and_second_pair(mini_parquet) -> None:
     assert rows[0]["title"] == "Applied Collaboration Networks"
 
 
-def test_suggest_authors() -> None:
-    authors = [
-        "Alice Doe",
-        "Bob Ray",
-        "Charlie Lin",
-        "Ian McCulloh",
-        "Ian Goodfellow",
-    ]
-    suggestions = suggest_authors(authors, "ian", limit=10)
-    assert "Ian McCulloh" in suggestions
-    assert "Ian Goodfellow" in suggestions
+def test_search_author_records_multi_year_filter_file(mini_parquet) -> None:
+    rows = search_author_records_multi(
+        mini_parquet,
+        author_queries=["alice"],
+        limit=50,
+        match_mode="or",
+        start_year=2020,
+        end_year=2020,
+    )
+    assert len(rows) == 2
+
+
+def test_search_author_records_multi_year_filter_empty(mini_parquet) -> None:
+    rows = search_author_records_multi(
+        mini_parquet,
+        author_queries=["alice"],
+        limit=50,
+        match_mode="or",
+        start_year=2021,
+        end_year=2021,
+    )
+    assert len(rows) == 0

@@ -378,6 +378,13 @@ with search_tab:
     with limit_col:
         search_limit = st.number_input("Result row limit", min_value=1, max_value=5000, value=200, step=50, key="search_limit")
 
+    enable_year_filter = st.checkbox("Filter by year range", value=False, key="search_enable_year_filter")
+    year_col1, year_col2 = st.columns(2)
+    with year_col1:
+        start_year = st.number_input("Start year", min_value=1800, max_value=2026, value=2018, step=1, key="search_start_year")
+    with year_col2:
+        end_year = st.number_input("End year", min_value=1800, max_value=2026, value=2022, step=1, key="search_end_year")
+
     selected_subset = None
     selected_sample = None
 
@@ -435,6 +442,8 @@ with search_tab:
                     author_queries=effective_queries,
                     limit=int(search_limit),
                     match_mode=match_mode,
+                    start_year=start_year if enable_year_filter else None,
+                    end_year=end_year if enable_year_filter else None,
                 )
                 profile = build_author_profile(rows, author_query=" | ".join(effective_queries))
 
@@ -478,11 +487,17 @@ with search_tab:
 
         search_csv_path = SEARCH_DIR / f"author_search_{author_slug}_results.csv"
         search_profile_path = SEARCH_DIR / f"author_search_{author_slug}_profile.json"
-        subset_name = f"author_{author_slug}"
-        ego_graph_name = f"author_{author_slug}_ego_collaboration"
+        subset_name = f"author_{author_slug}" if len(effective_queries) == 1 else author_slug
+        ego_graph_name = f"author_{author_slug}_ego_collaboration" if len(effective_queries) == 1 else f"{subset_name}_collaboration"
         ego_graph_path = GRAPHS_DIR / f"{ego_graph_name}.gexf"
         ego_analysis_path = METRICS_DIR / f"{ego_graph_name}_analysis.json"
         ego_report_path = REPORTS_DIR / f"{ego_graph_name}_report.md"
+
+        st.markdown("### Search execution context")
+        st.info(
+            f"Selected authors: {len(effective_queries)} | Match mode: {match_mode.upper()} | "
+            + (f"Year filter: {start_year}-{end_year}" if enable_year_filter else "Year filter: disabled")
+        )
 
         action_a, action_b, action_c = st.columns(3)
 
@@ -496,68 +511,128 @@ with search_tab:
                     raise_ui_error(str(exc))
 
         with action_b:
-            if st.button("Create author subset", width="stretch", key="search_create_subset"):
-                if not source_path:
-                    raise_ui_error("Source path missing.")
-                elif len(effective_queries) != 1:
-                    raise_ui_error("V10 currently supports subset creation for one selected author at a time.", category="warning")
-                else:
-                    command = [
-                        PYTHON_EXECUTABLE,
-                        "scripts/create_author_subset.py",
-                        "--input",
-                        str(source_path),
-                        "--author-query",
-                        effective_queries[0],
-                        "--output-root",
-                        str(SUBSETS_DIR),
-                        "--subset-name",
-                        subset_name,
-                        "--overwrite",
-                    ]
-                    success, output = run_command(
-                        command,
-                        stage="create_author_subset",
-                        parameters={"author_query": effective_queries[0]},
-                        outputs={"subset_name": subset_name},
-                    )
-                    st.code(output)
-                    if success:
-                        st.success(f"Subset created: {subset_name}")
+            if len(effective_queries) == 1:
+                if st.button("Create author subset", width="stretch", key="search_create_subset"):
+                    if not source_path:
+                        raise_ui_error("Source path missing.")
                     else:
-                        st.error("Subset creation failed.")
+                        command = [
+                            PYTHON_EXECUTABLE,
+                            "scripts/create_author_subset.py",
+                            "--input",
+                            str(source_path),
+                            "--author-query",
+                            effective_queries[0],
+                            "--output-root",
+                            str(SUBSETS_DIR),
+                            "--subset-name",
+                            subset_name,
+                            "--overwrite",
+                        ]
+                        success, output = run_command(
+                            command,
+                            stage="create_author_subset",
+                            parameters={"author_query": effective_queries[0]},
+                            outputs={"subset_name": subset_name},
+                        )
+                        st.code(output)
+                        if success:
+                            st.success(f"Subset created: {subset_name}")
+                        else:
+                            st.error("Subset creation failed.")
+            else:
+                if st.button("Create multi-author subset", width="stretch", key="search_create_multi_subset"):
+                    if not source_path:
+                        raise_ui_error("Source path missing.")
+                    else:
+                        command = [
+                            PYTHON_EXECUTABLE,
+                            "scripts/create_multi_author_subset.py",
+                            "--input",
+                            str(source_path),
+                            "--authors",
+                            *effective_queries,
+                            "--match-mode",
+                            match_mode,
+                            "--output-root",
+                            str(SUBSETS_DIR),
+                            "--subset-name",
+                            subset_name,
+                            "--overwrite",
+                        ]
+                        success, output = run_command(
+                            command,
+                            stage="create_multi_author_subset",
+                            parameters={"author_queries": effective_queries, "match_mode": match_mode},
+                            outputs={"subset_name": subset_name},
+                        )
+                        st.code(output)
+                        if success:
+                            st.success(f"Multi-author subset created: {subset_name}")
+                        else:
+                            st.error("Multi-author subset creation failed.")
 
         with action_c:
-            if st.button("Build ego graph", width="stretch", key="search_build_ego"):
-                if not source_path:
-                    raise_ui_error("Source path missing.")
-                elif len(effective_queries) != 1:
-                    raise_ui_error("V10 currently supports ego graph creation for one selected author at a time.", category="warning")
-                else:
-                    command = [
-                        PYTHON_EXECUTABLE,
-                        "scripts/build_author_ego_graph.py",
-                        "--input",
-                        str(source_path),
-                        "--author-query",
-                        effective_queries[0],
-                        "--output-dir",
-                        str(GRAPHS_DIR),
-                        "--graph-name",
-                        ego_graph_name,
-                        "--overwrite",
-                    ]
-                    success, output = run_command(
-                        command,
-                        stage="build_author_ego_graph",
-                        parameters={"author_query": effective_queries[0]},
-                        outputs={"graph_name": ego_graph_name},
-                    )
-                    st.code(output)
-                    if success:
-                        st.success(f"Ego graph created: {ego_graph_name}")
+            if len(effective_queries) == 1:
+                if st.button("Build ego graph", width="stretch", key="search_build_ego"):
+                    if not source_path:
+                        raise_ui_error("Source path missing.")
                     else:
-                        st.error("Ego graph build failed.")
+                        command = [
+                            PYTHON_EXECUTABLE,
+                            "scripts/build_author_ego_graph.py",
+                            "--input",
+                            str(source_path),
+                            "--author-query",
+                            effective_queries[0],
+                            "--output-dir",
+                            str(GRAPHS_DIR),
+                            "--graph-name",
+                            ego_graph_name,
+                            "--overwrite",
+                        ]
+                        success, output = run_command(
+                            command,
+                            stage="build_author_ego_graph",
+                            parameters={"author_query": effective_queries[0]},
+                            outputs={"graph_name": ego_graph_name},
+                        )
+                        st.code(output)
+                        if success:
+                            st.success(f"Ego graph created: {ego_graph_name}")
+                        else:
+                            st.error("Ego graph build failed.")
+            else:
+                if st.button("Build multi-author graph", width="stretch", key="search_build_multi_graph"):
+                    if not source_path:
+                        raise_ui_error("Source path missing.")
+                    else:
+                        command = [
+                            PYTHON_EXECUTABLE,
+                            "scripts/build_multi_author_graph.py",
+                            "--input",
+                            str(source_path),
+                            "--authors",
+                            *effective_queries,
+                            "--match-mode",
+                            match_mode,
+                            "--output-dir",
+                            str(GRAPHS_DIR),
+                            "--graph-name",
+                            f"{subset_name}_collaboration",
+                            "--overwrite",
+                        ]
+                        success, output = run_command(
+                            command,
+                            stage="build_multi_author_graph",
+                            parameters={"author_queries": effective_queries, "match_mode": match_mode},
+                            outputs={"graph_name": f"{subset_name}_collaboration"},
+                        )
+                        st.code(output)
+                        if success:
+                            st.success(f"Multi-author graph created: {subset_name}_collaboration")
+                        else:
+                            st.error("Multi-author graph build failed.")
 
         action_d, action_e, action_f = st.columns(3)
 
