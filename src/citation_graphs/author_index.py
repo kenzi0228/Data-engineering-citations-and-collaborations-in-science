@@ -60,8 +60,29 @@ def load_author_index(index_path: str | Path) -> list[str]:
 def suggest_authors(authors: list[str], query: str, limit: int = 20) -> list[str]:
     query = (query or "").strip().lower()
     if not query:
-        return authors[:limit]
+        return sorted(authors)[:limit]
 
-    starts = [name for name in authors if name.lower().startswith(query)]
-    contains = [name for name in authors if query in name.lower() and name not in starts]
-    return (starts + contains)[:limit]
+    starts = []
+    word_match = []
+    contains = []
+
+    for name in authors:
+        lowered = name.lower()
+
+        if lowered.startswith(query):
+            starts.append(name)
+            continue
+
+        words = lowered.replace("-", " ").replace("_", " ").split()
+        if any(word.startswith(query) for word in words):
+            word_match.append(name)
+            continue
+
+        if query in lowered:
+            contains.append(name)
+
+    starts = sorted(set(starts))
+    word_match = sorted(set(word_match) - set(starts))
+    contains = sorted(set(contains) - set(starts) - set(word_match))
+
+    return (starts + word_match + contains)[:limit]

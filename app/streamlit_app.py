@@ -182,6 +182,19 @@ def filter_node_catalog(rows: list[dict[str, str]], query: str, limit: int = 50)
     return (starts + contains)[:limit]
 
 
+def merge_selected_with_suggestions(selected: list[str], suggestions: list[str]) -> list[str]:
+    merged = []
+    seen = set()
+    for name in (selected or []) + (suggestions or []):
+        if not name:
+            continue
+        if name in seen:
+            continue
+        seen.add(name)
+        merged.append(name)
+    return merged
+
+
 def render_readable_paths(paths: list[list[dict[str, str]]], title: str) -> None:
     st.markdown(f"#### {title}")
     if not paths:
@@ -454,26 +467,41 @@ with search_tab:
 
     indexed_authors = load_author_index(author_index_path) if author_index_path else []
 
-    query_col, suggest_col = st.columns([1.3, 1.7])
+    query_col, suggest_col = st.columns([1.2, 1.8])
 
     with query_col:
         author_query = st.text_input(
             "Author text filter",
-            value=st.session_state.get("search_author_query", ""),
+            value="",
             key="search_author_query_input",
-            help="Used both for free-text search and to filter indexed suggestions.",
+            help="Type part of a name to filter indexed suggestions, without removing already selected authors.",
         )
-        suggestion_limit = st.number_input("Suggestion limit", min_value=5, max_value=100, value=20, step=5, key="search_suggestion_limit")
+        suggestion_limit = st.number_input("Suggestion limit", min_value=10, max_value=200, value=60, step=10, key="search_suggestion_limit")
+
+        if st.button("Clear selected authors", width="stretch", key="search_clear_selected_authors"):
+            st.session_state["search_selected_authors_input"] = []
+            st.session_state["search_selected_authors"] = []
 
     with suggest_col:
+        existing_selected = st.session_state.get("search_selected_authors_input", st.session_state.get("search_selected_authors", []))
         suggestions = suggest_authors(indexed_authors, author_query, limit=int(suggestion_limit)) if indexed_authors else []
+        selection_options = merge_selected_with_suggestions(existing_selected, suggestions)
+
         selected_authors = st.multiselect(
             "Indexed author selection",
-            options=suggestions,
-            default=st.session_state.get("search_selected_authors", []),
+            options=selection_options,
+            default=existing_selected,
             key="search_selected_authors_input",
-            help="Exact author names from the extracted author index.",
+            help="Selected authors persist even when the filter text changes.",
         )
+
+        if selected_authors:
+            st.caption("Selected authors")
+            st.code("\n".join(selected_authors))
+
+        if suggestions:
+            st.caption("Current suggestions preview")
+            st.write(", ".join(suggestions[:20]))
 
     effective_queries = selected_authors if selected_authors else ([author_query.strip()] if author_query.strip() else [])
 
@@ -498,6 +526,7 @@ with search_tab:
                 st.session_state["search_profile"] = profile
                 st.session_state["search_author_query"] = " | ".join(effective_queries)
                 st.session_state["search_selected_authors"] = selected_authors
+                st.session_state["search_selected_authors_input"] = selected_authors
                 st.success(f"Found {len(rows)} matching record(s).")
             except Exception as exc:
                 raise_ui_error(str(exc))
