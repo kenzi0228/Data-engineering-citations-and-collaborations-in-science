@@ -1,8 +1,9 @@
 ﻿from __future__ import annotations
 
+import html
 import json
+import unicodedata
 from pathlib import Path
-from typing import Any
 
 import duckdb
 
@@ -12,6 +13,14 @@ def _readable_input(path: Path) -> str:
     if path.is_dir():
         return str(path / "**" / "*.parquet")
     return str(path)
+
+
+def _clean_author_name(name: str) -> str:
+    value = html.unescape(str(name))
+    value = unicodedata.normalize("NFKC", value)
+    value = value.replace("\uFFFD", "")
+    value = " ".join(value.split())
+    return value.strip()
 
 
 def extract_author_index(input_path: str | Path) -> list[str]:
@@ -36,14 +45,22 @@ def extract_author_index(input_path: str | Path) -> list[str]:
     finally:
         con.close()
 
-    authors = [str(row[0]).strip() for row in rows if row and row[0] is not None and str(row[0]).strip()]
-    return authors
+    authors = []
+    for row in rows:
+        if not row or row[0] is None:
+            continue
+        cleaned = _clean_author_name(row[0])
+        if cleaned:
+            authors.append(cleaned)
+
+    return sorted(set(authors))
 
 
 def save_author_index(authors: list[str], output_path: str | Path) -> Path:
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(json.dumps(sorted(set(authors)), indent=2, ensure_ascii=False), encoding="utf-8")
+    cleaned = sorted(set(_clean_author_name(author) for author in authors if str(author).strip()))
+    output_path.write_text(json.dumps(cleaned, indent=2, ensure_ascii=False), encoding="utf-8")
     return output_path
 
 
@@ -54,20 +71,20 @@ def load_author_index(index_path: str | Path) -> list[str]:
     data = json.loads(index_path.read_text(encoding="utf-8"))
     if not isinstance(data, list):
         return []
-    return [str(item).strip() for item in data if str(item).strip()]
+    return [_clean_author_name(item) for item in data if _clean_author_name(item)]
 
 
 def suggest_authors(authors: list[str], query: str, limit: int = 20) -> list[str]:
-    query = (query or "").strip().lower()
+    query = _clean_author_name(query).lower()
     if not query:
-        return sorted(authors)[:limit]
+        return []
 
     starts = []
     word_match = []
     contains = []
 
     for name in authors:
-        lowered = name.lower()
+        lowered = _clean_author_name(name).lower()
 
         if lowered.startswith(query):
             starts.append(name)

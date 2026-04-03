@@ -1,11 +1,12 @@
 ﻿from __future__ import annotations
 
 import json
+import time
 from itertools import combinations
 from pathlib import Path
 from typing import Any
 
-import duckdb
+import pandas as pd
 import networkx as nx
 
 from citation_graphs.search import search_author_records_multi, slugify
@@ -81,29 +82,13 @@ def save_multi_author_subset_parquet(
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    json_path = output_dir / "_multi_author_subset_temp.json"
     parquet_path = output_dir / "data.parquet"
     summary_path = output_dir / "_subset_summary.json"
 
-    json_path.write_text(json.dumps(rows, ensure_ascii=False, indent=2), encoding="utf-8")
-
-    con = duckdb.connect(database=":memory:")
-    try:
-        con.execute(
-            f"""
-            COPY (
-                SELECT *
-                FROM read_json_auto('{json_path}')
-            )
-            TO '{parquet_path}'
-            (FORMAT PARQUET)
-            """
-        )
-    finally:
-        con.close()
-
-    if json_path.exists():
-        json_path.unlink()
+    start = time.perf_counter()
+    df = pd.DataFrame(rows)
+    df.to_parquet(parquet_path, index=False)
+    write_seconds = round(time.perf_counter() - start, 4)
 
     years = [
         int(row["year_clean"])
@@ -119,6 +104,7 @@ def save_multi_author_subset_parquet(
         "row_count": len(rows),
         "output_dir": str(output_dir.resolve()),
         "data_file": str(parquet_path.resolve()),
+        "write_seconds": write_seconds,
         "preview": {
             "min_year": min(years) if years else None,
             "max_year": max(years) if years else None,

@@ -3,6 +3,7 @@
 import json
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -42,6 +43,7 @@ QUALITY_DIR = PROJECT_ROOT / "outputs" / "quality"
 
 
 def run_command(command: list[str], stage: str, parameters: dict[str, Any] | None = None, outputs: dict[str, Any] | None = None) -> tuple[bool, str]:
+    started = time.perf_counter()
     try:
         result = subprocess.run(
             command,
@@ -50,16 +52,19 @@ def run_command(command: list[str], stage: str, parameters: dict[str, Any] | Non
             text=True,
             check=True,
         )
+        elapsed = round(time.perf_counter() - started, 4)
+        message = (result.stdout or "Command completed successfully.").strip()
         append_pipeline_run(
             MANIFEST_PATH,
             stage=stage,
             status="success",
             parameters=parameters,
             outputs=outputs,
-            message=(result.stdout or "").strip(),
+            message=f"[{elapsed}s]\n{message}",
         )
-        return True, (result.stdout or "Command completed successfully.").strip()
+        return True, f"[{elapsed}s]\n{message}"
     except subprocess.CalledProcessError as exc:
+        elapsed = round(time.perf_counter() - started, 4)
         output = ((exc.stdout or "") + "\n" + (exc.stderr or "")).strip()
         append_pipeline_run(
             MANIFEST_PATH,
@@ -67,9 +72,9 @@ def run_command(command: list[str], stage: str, parameters: dict[str, Any] | Non
             status="failed",
             parameters=parameters,
             outputs=outputs,
-            message=output,
+            message=f"[{elapsed}s]\n{output}",
         )
-        return False, output or "Command failed with no output."
+        return False, f"[{elapsed}s]\n{output or 'Command failed with no output.'}"
 
 
 def read_json_if_exists(path: Path) -> dict | list | None:
@@ -369,6 +374,8 @@ if "search_author_query" not in st.session_state:
     st.session_state["search_author_query"] = ""
 if "search_selected_authors" not in st.session_state:
     st.session_state["search_selected_authors"] = []
+if "search_selected_authors_input" not in st.session_state:
+    st.session_state["search_selected_authors_input"] = []
 if "insights_base_name" not in st.session_state:
     st.session_state["insights_base_name"] = None
 if "insights_graph_type" not in st.session_state:
@@ -426,6 +433,7 @@ with overview_tab:
 
 with search_tab:
     section_header("Author Investigation", "Search one or several authors, use exact indexed suggestions, and build subset or ego-graph artifacts.")
+    st.info("Quick guide: choose a source, type at least 2 characters to search indexed authors, optionally enable a year filter for faster searches on normalized data, then run the search.")
 
     source_col, mode_col, limit_col = st.columns([1.0, 1.0, 0.8])
 
@@ -457,6 +465,8 @@ with search_tab:
 
     source_path = resolve_search_source(source_mode, selected_subset, selected_sample)
     st.code(f"Resolved source: {source_path if source_path else 'missing'}")
+    if source_mode == "normalized" and not enable_year_filter:
+        st.warning("Searching across all normalized yearly partitions can be slow. Use a year range when possible.")
 
     if source_mode == "normalized":
         author_index_path = AUTHOR_INDEX_NORMALIZED_PATH
@@ -479,12 +489,16 @@ with search_tab:
         suggestion_limit = st.number_input("Suggestion limit", min_value=10, max_value=200, value=60, step=10, key="search_suggestion_limit")
 
         if st.button("Clear selected authors", width="stretch", key="search_clear_selected_authors"):
-            st.session_state["search_selected_authors_input"] = []
             st.session_state["search_selected_authors"] = []
+            st.session_state["search_clear_request"] = True
 
     with suggest_col:
+        if st.session_state.get("search_clear_request"):
+            st.session_state["search_selected_authors_input"] = []
+            st.session_state["search_clear_request"] = False
+
         existing_selected = st.session_state.get("search_selected_authors_input", st.session_state.get("search_selected_authors", []))
-        suggestions = suggest_authors(indexed_authors, author_query, limit=int(suggestion_limit)) if indexed_authors else []
+        suggestions = suggest_authors(indexed_authors, author_query, limit=int(suggestion_limit)) if indexed_authors and len(author_query.strip()) >= 2 else []
         selection_options = merge_selected_with_suggestions(existing_selected, suggestions)
 
         selected_authors = st.multiselect(
@@ -495,13 +509,20 @@ with search_tab:
             help="Selected authors persist even when the filter text changes.",
         )
 
+        st.session_state["search_selected_authors"] = selected_authors
+
         if selected_authors:
             st.caption("Selected authors")
             st.code("\n".join(selected_authors))
+        else:
+            st.info("No author selected yet. Type at least 2 characters to get clean suggestions.")
 
-        if suggestions:
-            st.caption("Current suggestions preview")
-            st.write(", ".join(suggestions[:20]))
+        if len(author_query.strip()) >= 2:
+            if suggestions:
+                st.caption("Current suggestions preview")
+                st.write(", ".join(suggestions[:20]))
+            else:
+                st.caption("No suggestions for the current filter.")
 
     effective_queries = selected_authors if selected_authors else ([author_query.strip()] if author_query.strip() else [])
 
@@ -526,7 +547,6 @@ with search_tab:
                 st.session_state["search_profile"] = profile
                 st.session_state["search_author_query"] = " | ".join(effective_queries)
                 st.session_state["search_selected_authors"] = selected_authors
-                st.session_state["search_selected_authors_input"] = selected_authors
                 st.success(f"Found {len(rows)} matching record(s).")
             except Exception as exc:
                 raise_ui_error(str(exc))
