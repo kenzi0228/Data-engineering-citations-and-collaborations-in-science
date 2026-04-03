@@ -21,6 +21,8 @@ from citation_graphs.author_profile import build_author_profile
 from citation_graphs.fos_index import load_fos_index
 from citation_graphs.manifests import append_pipeline_run, read_pipeline_runs
 from citation_graphs.path_finder import investigate_path_between_nodes, load_graph
+from citation_graphs.publication_profile import build_publication_profile
+from citation_graphs.publication_search import export_publication_results_csv, search_publication_records
 from citation_graphs.search import export_search_results_csv, search_author_records, search_author_records_multi, slugify
 
 PYTHON_EXECUTABLE = sys.executable
@@ -387,6 +389,24 @@ def build_search_results_dataframe(rows: list[dict[str, Any]]) -> pd.DataFrame:
     return pd.DataFrame(prepared)
 
 
+def build_publication_results_dataframe(rows: list[dict[str, Any]]) -> pd.DataFrame:
+    prepared = []
+    for row in rows:
+        prepared.append(
+            {
+                "paper_id": row.get("paper_id"),
+                "title": row.get("title"),
+                "year_clean": row.get("year_clean"),
+                "venue_name": row.get("venue_name"),
+                "author_names": " | ".join(str(x) for x in row.get("author_names", [])),
+                "fos": " | ".join(str(x) for x in row.get("fos", [])),
+                "reference_count": row.get("reference_count"),
+                "n_citation": row.get("n_citation"),
+            }
+        )
+    return pd.DataFrame(prepared)
+
+
 st.set_page_config(
     page_title="Citation & Collaboration Graph Pipeline",
     page_icon="ðŸ“Š",
@@ -409,6 +429,12 @@ if "path_target_label" not in st.session_state:
     st.session_state["path_target_label"] = "<none>"
 if "path_finder_result" not in st.session_state:
     st.session_state["path_finder_result"] = None
+if "publication_rows" not in st.session_state:
+    st.session_state["publication_rows"] = []
+if "publication_profile" not in st.session_state:
+    st.session_state["publication_profile"] = None
+if "publication_title_query" not in st.session_state:
+    st.session_state["publication_title_query"] = ""
 if "insights_base_name" not in st.session_state:
     st.session_state["insights_base_name"] = None
 if "insights_graph_type" not in st.session_state:
@@ -417,10 +443,11 @@ if "insights_graph_type" not in st.session_state:
 st.title("Citation & Collaboration Graph Pipeline")
 st.caption("Quick Start: 1) inspect raw data, 2) normalize, 3) create a subset, 4) build a graph, 5) run analysis, 6) explore insights, comparisons, quality and reports.")
 
-overview_tab, search_tab, demo_tab, inspect_tab, normalize_tab, filter_tab, graph_tab, analyze_tab, insights_tab, compare_tab, path_tab, quality_tab, history_tab, artifacts_tab = st.tabs(
+overview_tab, search_tab, publication_tab, demo_tab, inspect_tab, normalize_tab, filter_tab, graph_tab, analyze_tab, insights_tab, compare_tab, path_tab, quality_tab, history_tab, artifacts_tab = st.tabs(
     [
         "Overview",
         "Search",
+        "Publication Search",
         "Demo",
         "Inspect Raw",
         "Normalize",
@@ -840,6 +867,280 @@ with search_tab:
             if report_preview:
                 st.markdown("#### Ego report preview")
                 st.text_area("Report preview", report_preview[:4000], height=220, key="search_report_preview")
+
+
+with publication_tab:
+    section_header("Publication Search", "Search publications by title, inspect their profile, and build publication-centered citation artifacts.")
+    st.info("Quick guide: choose a source, enter a title fragment, optionally filter by year range, then search. Use sample or subset for faster demos.")
+
+    source_col, limit_col = st.columns([1.2, 0.8])
+
+    with source_col:
+        publication_source_mode = st.selectbox("Source", ["normalized", "subset", "sample"], key="publication_source_mode")
+
+    with limit_col:
+        publication_limit = st.number_input("Result row limit", min_value=1, max_value=5000, value=100, step=25, key="publication_limit")
+
+    publication_selected_subset = None
+    publication_selected_sample = None
+
+    if publication_source_mode == "subset":
+        subset_names = [p.name for p in list_subset_dirs()]
+        publication_selected_subset = st.selectbox(
+            "Subset source",
+            options=subset_names if subset_names else ["<none>"],
+            key="publication_subset_name",
+        )
+    elif publication_source_mode == "sample":
+        sample_names = [p.name for p in list_sample_parquets()]
+        publication_selected_sample = st.selectbox(
+            "Sample source",
+            options=sample_names if sample_names else ["<none>"],
+            key="publication_sample_name",
+        )
+
+    publication_source_path = resolve_search_source(
+        publication_source_mode,
+        publication_selected_subset,
+        publication_selected_sample,
+    )
+
+    st.code(f"Resolved source: {publication_source_path if publication_source_path else 'missing'}")
+
+    publication_enable_year_filter = st.checkbox("Filter by year range", value=False, key="publication_enable_year_filter")
+    publication_year_col1, publication_year_col2 = st.columns(2)
+    with publication_year_col1:
+        publication_start_year = st.number_input("Start year", min_value=1800, max_value=2026, value=2018, step=1, key="publication_start_year")
+    with publication_year_col2:
+        publication_end_year = st.number_input("End year", min_value=1800, max_value=2026, value=2022, step=1, key="publication_end_year")
+
+    publication_title_query = st.text_input(
+        "Publication title filter",
+        value=st.session_state.get("publication_title_query", ""),
+        key="publication_title_query_input",
+        help="Search publications by title fragment.",
+    )
+
+    if st.button("Search publications", width="stretch", key="publication_search_button"):
+        if not publication_source_path:
+            raise_ui_error("Selected source is missing.")
+        elif not publication_title_query.strip():
+            raise_ui_error("Publication title query cannot be empty.")
+        else:
+            try:
+                rows = search_publication_records(
+                    publication_source_path,
+                    title_query=publication_title_query.strip(),
+                    limit=int(publication_limit),
+                    start_year=publication_start_year if publication_enable_year_filter else None,
+                    end_year=publication_end_year if publication_enable_year_filter else None,
+                )
+                profile = build_publication_profile(rows, title_query=publication_title_query.strip())
+
+                st.session_state["publication_rows"] = rows
+                st.session_state["publication_profile"] = profile
+                st.session_state["publication_title_query"] = publication_title_query.strip()
+                st.success(f"Found {len(rows)} matching publication record(s).")
+            except Exception as exc:
+                raise_ui_error(str(exc))
+
+    publication_rows = st.session_state.get("publication_rows", [])
+    publication_profile = st.session_state.get("publication_profile")
+
+    if publication_rows:
+        st.markdown("### Publication Search Results")
+        publication_df = build_publication_results_dataframe(publication_rows)
+        st.dataframe(publication_df, width="stretch", height=420)
+
+        st.markdown("### Publication Profile")
+        p1, p2, p3, p4 = st.columns(4)
+        with p1:
+            metric_card("Publications", str(publication_profile.get("publication_count", 0)), "Matching records")
+        with p2:
+            metric_card("Year range", f"{publication_profile.get('min_year', '-') } - {publication_profile.get('max_year', '-')}", "Observed span")
+        with p3:
+            metric_card("Total citations", str(publication_profile.get("total_citations", 0)), "Summed on returned rows")
+        with p4:
+            metric_card("Top authors", str(len(publication_profile.get("top_authors", []))), "Distinct ranked authors")
+
+        left, right = st.columns(2)
+        with left:
+            render_table_from_list("Top venues", publication_profile.get("top_venues", []), max_rows=10)
+            render_table_from_list("Top authors", publication_profile.get("top_authors", []), max_rows=10)
+        with right:
+            render_table_from_list("Top fields of study", publication_profile.get("top_fos", []), max_rows=10)
+            render_json_summary(
+                "Search summary",
+                {
+                    "title_query": publication_profile.get("title_query"),
+                    "publication_count": publication_profile.get("publication_count"),
+                    "total_citations": publication_profile.get("total_citations"),
+                },
+            )
+
+        publication_slug = slugify(st.session_state["publication_title_query"])
+        publication_csv_path = SEARCH_DIR / f"publication_{publication_slug}_results.csv"
+        publication_profile_path = SEARCH_DIR / f"publication_{publication_slug}_profile.json"
+        publication_subset_name = f"publication_{publication_slug}"
+        publication_graph_name = f"publication_{publication_slug}_citation"
+        publication_graph_path = GRAPHS_DIR / f"{publication_graph_name}.gexf"
+        publication_analysis_path = METRICS_DIR / f"{publication_graph_name}_analysis.json"
+        publication_report_path = REPORTS_DIR / f"{publication_graph_name}_report.md"
+
+        st.markdown("### Search execution context")
+        st.info(
+            f"Title query: {st.session_state['publication_title_query']} | "
+            + (f"Year filter: {publication_start_year}-{publication_end_year}" if publication_enable_year_filter else "Year filter: disabled")
+        )
+
+        action_a, action_b, action_c = st.columns(3)
+
+        with action_a:
+            if st.button("Export publication CSV", width="stretch", key="publication_export_csv"):
+                try:
+                    export_publication_results_csv(publication_rows, publication_csv_path)
+                    publication_profile_path.write_text(json.dumps(publication_profile, indent=4, ensure_ascii=False), encoding="utf-8")
+                    st.success("Saved publication search artifacts under outputs/search/")
+                except Exception as exc:
+                    raise_ui_error(str(exc))
+
+        with action_b:
+            if st.button("Create publication subset", width="stretch", key="publication_create_subset"):
+                if not publication_source_path:
+                    raise_ui_error("Source path missing.")
+                else:
+                    command = [
+                        PYTHON_EXECUTABLE,
+                        "scripts/create_publication_subset.py",
+                        "--input",
+                        str(publication_source_path),
+                        "--title-query",
+                        st.session_state["publication_title_query"],
+                        "--output-root",
+                        str(SUBSETS_DIR),
+                        "--subset-name",
+                        publication_subset_name,
+                        "--overwrite",
+                    ]
+                    success, output = run_command(
+                        command,
+                        stage="create_publication_subset",
+                        parameters={"title_query": st.session_state["publication_title_query"]},
+                        outputs={"subset_name": publication_subset_name},
+                    )
+                    st.code(output)
+                    if success:
+                        st.success(f"Publication subset created: {publication_subset_name}")
+                    else:
+                        st.error("Publication subset creation failed.")
+
+        with action_c:
+            if st.button("Build publication graph", width="stretch", key="publication_build_graph"):
+                if not publication_source_path:
+                    raise_ui_error("Source path missing.")
+                else:
+                    command = [
+                        PYTHON_EXECUTABLE,
+                        "scripts/build_publication_neighborhood_graph.py",
+                        "--input",
+                        str(publication_source_path),
+                        "--title-query",
+                        st.session_state["publication_title_query"],
+                        "--output-dir",
+                        str(GRAPHS_DIR),
+                        "--graph-name",
+                        publication_graph_name,
+                        "--overwrite",
+                    ]
+                    success, output = run_command(
+                        command,
+                        stage="build_publication_graph",
+                        parameters={"title_query": st.session_state["publication_title_query"]},
+                        outputs={"graph_name": publication_graph_name},
+                    )
+                    st.code(output)
+                    if success:
+                        st.success(f"Publication graph created: {publication_graph_name}")
+                    else:
+                        st.error("Publication graph build failed.")
+
+        action_d, action_e, action_f = st.columns(3)
+
+        with action_d:
+            if st.button("Analyze publication graph", width="stretch", key="publication_analyze_graph"):
+                if not publication_graph_path.exists():
+                    raise_ui_error(f"Graph file not found: {publication_graph_path.name}")
+                else:
+                    command = [
+                        PYTHON_EXECUTABLE,
+                        "scripts/analyze_graph.py",
+                        "--input",
+                        str(publication_graph_path),
+                        "--output",
+                        str(publication_analysis_path),
+                        "--top-n",
+                        "10",
+                        "--betweenness-sample-k",
+                        "100",
+                    ]
+                    success, output = run_command(
+                        command,
+                        stage="analyze_publication_graph",
+                        parameters={"graph_name": publication_graph_name},
+                        outputs={"analysis": publication_analysis_path.name},
+                    )
+                    st.code(output)
+                    if success:
+                        st.success("Publication graph analysis completed.")
+                    else:
+                        st.error("Publication graph analysis failed.")
+
+        with action_e:
+            if st.button("Export publication report", width="stretch", key="publication_export_report"):
+                if not publication_analysis_path.exists():
+                    raise_ui_error(f"Analysis file not found: {publication_analysis_path.name}")
+                else:
+                    command = [
+                        PYTHON_EXECUTABLE,
+                        "scripts/export_analysis_report.py",
+                        "--input",
+                        str(publication_analysis_path),
+                        "--output",
+                        str(publication_report_path),
+                        "--name",
+                        publication_graph_name,
+                    ]
+                    success, output = run_command(
+                        command,
+                        stage="export_publication_report",
+                        parameters={"analysis": publication_analysis_path.name},
+                        outputs={"report": publication_report_path.name},
+                    )
+                    st.code(output)
+                    if success:
+                        st.success("Publication report exported.")
+                    else:
+                        st.error("Publication report export failed.")
+
+        with action_f:
+            if st.button("Open publication graph in Insights", width="stretch", key="publication_open_in_insights"):
+                st.session_state["insights_base_name"] = publication_graph_name
+                st.session_state["insights_graph_type"] = "citation"
+                st.success(f"Insights target set to: {publication_graph_name}. Open the Insights tab to inspect it.")
+
+        preview_left, preview_right = st.columns(2)
+        with preview_left:
+            subset_summary = read_json_if_exists(SUBSETS_DIR / publication_subset_name / "_subset_summary.json")
+            render_json_summary("Publication subset summary", subset_summary)
+            graph_summary = read_json_if_exists(GRAPHS_DIR / f"{publication_graph_name}_summary.json")
+            render_json_summary("Publication graph summary", graph_summary)
+        with preview_right:
+            analysis_summary = read_json_if_exists(publication_analysis_path)
+            render_json_summary("Publication graph analysis", analysis_summary)
+            report_preview = read_text_if_exists(publication_report_path)
+            if report_preview:
+                st.markdown("#### Publication report preview")
+                st.text_area("Publication report preview", report_preview[:4000], height=220, key="publication_report_preview")
 
 with demo_tab:
     section_header("Demo Workflow", "Create or select a sample, then build, analyze and report on it end to end.")
