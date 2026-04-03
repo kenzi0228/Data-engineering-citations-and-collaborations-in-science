@@ -212,6 +212,33 @@ def render_readable_paths(paths: list[list[dict[str, str]]], title: str) -> None
         st.code(" -> ".join(labels))
 
 
+def readable_path_to_dataframe(path: list[dict[str, str]]) -> pd.DataFrame:
+    rows = []
+    for idx, step in enumerate(path, start=1):
+        rows.append(
+            {
+                "order": idx,
+                "display_name": step.get("display_name"),
+                "node_type": step.get("node_type"),
+                "node_id": step.get("node_id"),
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def render_readable_paths_table(paths: list[list[dict[str, str]]], title: str) -> None:
+    st.markdown(f"#### {title}")
+    if not paths:
+        st.info("No paths available.")
+        return
+
+    for idx, path in enumerate(paths, start=1):
+        with st.expander(f"Path {idx} ({len(path)} node(s))", expanded=(idx == 1)):
+            labels = [step.get("display_name", step.get("node_id", "")) for step in path]
+            st.code(" -> ".join(labels))
+            st.dataframe(readable_path_to_dataframe(path), width="stretch", height=min(420, 80 + 35 * len(path)))
+
+
 @st.cache_data(show_spinner=False)
 def get_available_fos_values() -> list[str]:
     return load_fos_index(FOS_INDEX_PATH)
@@ -376,6 +403,12 @@ if "search_selected_authors" not in st.session_state:
     st.session_state["search_selected_authors"] = []
 if "search_selected_authors_input" not in st.session_state:
     st.session_state["search_selected_authors_input"] = []
+if "path_source_label" not in st.session_state:
+    st.session_state["path_source_label"] = "<none>"
+if "path_target_label" not in st.session_state:
+    st.session_state["path_target_label"] = "<none>"
+if "path_finder_result" not in st.session_state:
+    st.session_state["path_finder_result"] = None
 if "insights_base_name" not in st.session_state:
     st.session_state["insights_base_name"] = None
 if "insights_graph_type" not in st.session_state:
@@ -1414,12 +1447,19 @@ with compare_tab:
 
 with path_tab:
     section_header("Path Finder", "Investigate whether two nodes are connected and inspect the shortest path between them.")
+    st.info("Use collaboration graphs for author-to-author paths and citation graphs for publication-to-publication paths.")
 
     graph_bases = extract_graph_base_names()
-    graph_type = st.selectbox("Graph type", ["collaboration", "citation"], key="path_graph_type")
-    selected_base = st.selectbox("Graph base name", options=graph_bases if graph_bases else ["<none>"], key="path_graph_base")
+    top_row_1, top_row_2, top_row_3 = st.columns([1.2, 1.2, 0.8])
 
-    max_paths = st.number_input("Maximum shortest paths to display", min_value=1, max_value=20, value=5, step=1, key="path_max_paths")
+    with top_row_1:
+        graph_type = st.selectbox("Graph type", ["collaboration", "citation"], key="path_graph_type")
+
+    with top_row_2:
+        selected_base = st.selectbox("Graph base name", options=graph_bases if graph_bases else ["<none>"], key="path_graph_base")
+
+    with top_row_3:
+        max_paths = st.number_input("Maximum shortest paths", min_value=1, max_value=20, value=5, step=1, key="path_max_paths")
 
     if selected_base != "<none>":
         graph_path = GRAPHS_DIR / f"{selected_base}_{graph_type}.gexf"
@@ -1433,35 +1473,54 @@ with path_tab:
             catalog = load_graph_node_catalog(str(graph_path))
             st.caption(f"Loaded {len(catalog)} node(s) from the graph.")
 
-            col1, col2 = st.columns(2)
+            control_col_1, control_col_2, control_col_3 = st.columns([1.2, 1.2, 0.8])
 
-            with col1:
+            with control_col_1:
                 source_filter = st.text_input("Source filter", value="", key="path_source_filter")
-                source_candidates = filter_node_catalog(catalog, source_filter, limit=50)
+                source_candidates = filter_node_catalog(catalog, source_filter, limit=100)
                 source_options = [f"{row['display_name']} | {row['node_id']}" for row in source_candidates]
+
+                if st.session_state.get("path_source_label") not in source_options and source_options:
+                    if st.session_state.get("path_source_label") == "<none>":
+                        pass
+
                 selected_source_label = st.selectbox(
                     "Source node",
                     options=source_options if source_options else ["<none>"],
                     key="path_source_label",
                 )
 
-            with col2:
+            with control_col_2:
                 target_filter = st.text_input("Target filter", value="", key="path_target_filter")
-                target_candidates = filter_node_catalog(catalog, target_filter, limit=50)
+                target_candidates = filter_node_catalog(catalog, target_filter, limit=100)
                 target_options = [f"{row['display_name']} | {row['node_id']}" for row in target_candidates]
+
                 selected_target_label = st.selectbox(
                     "Target node",
                     options=target_options if target_options else ["<none>"],
                     key="path_target_label",
                 )
 
+            with control_col_3:
+                st.markdown("#### Actions")
+                if st.button("Swap source / target", width="stretch", key="path_swap_button"):
+                    source_value = st.session_state.get("path_source_label", "<none>")
+                    target_value = st.session_state.get("path_target_label", "<none>")
+                    st.session_state["path_source_label"] = target_value
+                    st.session_state["path_target_label"] = source_value
+                    st.rerun()
+
+                if st.button("Clear path result", width="stretch", key="path_clear_result_button"):
+                    st.session_state["path_finder_result"] = None
+                    st.rerun()
+
             if st.button("Investigate path", width="stretch", key="path_investigate_button"):
-                if selected_source_label == "<none>" or selected_target_label == "<none>":
+                if st.session_state.get("path_source_label") == "<none>" or st.session_state.get("path_target_label") == "<none>":
                     raise_ui_error("Choose both source and target nodes.")
                 else:
                     try:
-                        source_node_id = selected_source_label.split(" | ")[-1]
-                        target_node_id = selected_target_label.split(" | ")[-1]
+                        source_node_id = st.session_state["path_source_label"].split(" | ")[-1]
+                        target_node_id = st.session_state["path_target_label"].split(" | ")[-1]
                         graph = load_graph(str(graph_path))
                         result = investigate_path_between_nodes(
                             graph,
@@ -1469,6 +1528,7 @@ with path_tab:
                             target_node_id=target_node_id,
                             max_paths=int(max_paths),
                         )
+                        result["graph_path"] = str(graph_path)
                         st.session_state["path_finder_result"] = result
                         st.success("Path investigation completed.")
                     except Exception as exc:
@@ -1492,7 +1552,7 @@ with path_tab:
         with c3:
             metric_card("Directed graph", "Yes" if result.get("graph_is_directed") else "No", "Graph orientation")
         with c4:
-            metric_card("Max paths", str(result.get("max_paths_requested")), "Requested path cap")
+            metric_card("Returned paths", str(len(result.get("all_shortest_paths_readable", []))), "Shortest paths found")
 
         left, right = st.columns(2)
         with left:
@@ -1512,6 +1572,7 @@ with path_tab:
                     "connected": result.get("connected"),
                     "shortest_path_length": result.get("shortest_path_length"),
                     "graph_is_directed": result.get("graph_is_directed"),
+                    "graph_path": result.get("graph_path"),
                 },
             )
 
@@ -1520,10 +1581,25 @@ with path_tab:
             st.markdown("#### Main shortest path")
             main_labels = [step.get("display_name", step.get("node_id", "")) for step in shortest_path_readable]
             st.code(" -> ".join(main_labels))
+            st.dataframe(
+                readable_path_to_dataframe(shortest_path_readable),
+                width="stretch",
+                height=min(420, 80 + 35 * len(shortest_path_readable)),
+            )
         else:
             st.info("No shortest path available.")
 
-        render_readable_paths(result.get("all_shortest_paths_readable", []), "All shortest paths")
+        render_readable_paths_table(result.get("all_shortest_paths_readable", []), "All shortest paths")
+
+        export_json = json.dumps(result, indent=4, ensure_ascii=False)
+        st.download_button(
+            "Download path investigation JSON",
+            data=export_json,
+            file_name="path_investigation.json",
+            mime="application/json",
+            width="stretch",
+            key="path_download_json",
+        )
 
         st.markdown("#### Raw investigation payload")
         st.json(result)
