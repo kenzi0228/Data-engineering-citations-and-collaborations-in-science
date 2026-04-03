@@ -8,6 +8,12 @@ from typing import Any
 
 import duckdb
 
+from citation_graphs.scan_strategy import (
+    SEARCH_PUBLICATION_COLUMNS,
+    build_duckdb_read_expression,
+    resolve_partition_sources,
+)
+
 
 def slugify(value: str) -> str:
     value = value.strip().lower()
@@ -141,13 +147,6 @@ def _row_to_python(row: dict[str, Any]) -> dict[str, Any]:
     return converted
 
 
-def _readable_input(path: Path) -> str:
-    path = Path(path)
-    if path.is_dir():
-        return str(path / "**" / "*.parquet")
-    return str(path)
-
-
 def search_publication_records(
     input_path: str | Path,
     title_query: str,
@@ -160,34 +159,48 @@ def search_publication_records(
         raise ValueError("title_query cannot be empty")
 
     input_path = Path(input_path)
-    source = _readable_input(input_path)
+    resolved = resolve_partition_sources(
+        input_path,
+        start_year=start_year if input_path.is_dir() else None,
+        end_year=end_year if input_path.is_dir() else None,
+    )
+    read_expr = build_duckdb_read_expression(resolved)
+    if not read_expr:
+        return []
 
     where_clauses = ["lower(title) LIKE lower(?)"]
     parameters: list[Any] = [f"%{title_query}%"]
 
-    if start_year is not None:
-        where_clauses.append("year_clean >= ?")
-        parameters.append(int(start_year))
-    if end_year is not None:
-        where_clauses.append("year_clean <= ?")
-        parameters.append(int(end_year))
+    if input_path.is_file():
+        if start_year is not None:
+            where_clauses.append("year_clean >= ?")
+            parameters.append(int(start_year))
+        if end_year is not None:
+            where_clauses.append("year_clean <= ?")
+            parameters.append(int(end_year))
+
+    select_columns = ",\n        ".join(
+        [
+            "paper_id",
+            "title",
+            "year_clean",
+            "n_citation",
+            "lang",
+            "venue_name",
+            "fos",
+            "fos_count",
+            '"references" AS references_list',
+            "reference_count",
+            "author_ids",
+            "author_names",
+            "author_count",
+        ]
+    )
 
     query = f"""
     SELECT
-        paper_id,
-        title,
-        year_clean,
-        n_citation,
-        lang,
-        venue_name,
-        fos,
-        fos_count,
-        "references" AS references_list,
-        reference_count,
-        author_ids,
-        author_names,
-        author_count
-    FROM read_parquet('{source}')
+        {select_columns}
+    FROM {read_expr}
     WHERE {' AND '.join(where_clauses)}
     ORDER BY year_clean DESC NULLS LAST, n_citation DESC NULLS LAST, title ASC
     LIMIT ?

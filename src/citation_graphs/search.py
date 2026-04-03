@@ -8,6 +8,12 @@ from typing import Any
 
 import duckdb
 
+from citation_graphs.scan_strategy import (
+    SEARCH_AUTHOR_COLUMNS,
+    build_duckdb_read_expression,
+    resolve_partition_sources,
+)
+
 
 def slugify(value: str) -> str:
     value = value.strip().lower()
@@ -170,61 +176,6 @@ def _row_to_python(row: dict[str, Any]) -> dict[str, Any]:
     return converted
 
 
-def _readable_input(path: Path) -> str:
-    path = Path(path)
-    if path.is_dir():
-        return str(path / "**" / "*.parquet")
-    return str(path)
-
-
-def _resolve_normalized_partition_sources(
-    normalized_dir: Path,
-    start_year: int | None = None,
-    end_year: int | None = None,
-) -> list[str]:
-    if not normalized_dir.exists():
-        raise FileNotFoundError(f"Normalized directory not found: {normalized_dir}")
-
-    if start_year is None and end_year is None:
-        return [str(normalized_dir / "**" / "*.parquet")]
-
-    if start_year is not None and end_year is not None and start_year > end_year:
-        raise ValueError("start_year must be less than or equal to end_year")
-
-    partition_dirs = []
-    for child in normalized_dir.iterdir():
-        if not child.is_dir():
-            continue
-        name = child.name
-        if not name.startswith("year_partition="):
-            continue
-        year_str = name.replace("year_partition=", "")
-        if not year_str.isdigit():
-            continue
-        year = int(year_str)
-        if start_year is not None and year < start_year:
-            continue
-        if end_year is not None and year > end_year:
-            continue
-        partition_dirs.append(str(child / "*.parquet"))
-
-    return sorted(partition_dirs)
-
-
-def _build_source_expression(
-    input_path: Path,
-    start_year: int | None = None,
-    end_year: int | None = None,
-) -> str:
-    if input_path.is_dir():
-        sources = _resolve_normalized_partition_sources(input_path, start_year=start_year, end_year=end_year)
-        if not sources:
-            return ""
-        quoted = ", ".join(f"'{src}'" for src in sources)
-        return quoted
-    return f"'{str(input_path)}'"
-
-
 def _filter_rows_by_year_range(
     rows: list[dict[str, Any]],
     start_year: int | None = None,
@@ -278,14 +229,19 @@ def search_author_records_multi(
     if match_mode not in {"or", "and"}:
         raise ValueError("match_mode must be either 'or' or 'and'")
 
-    source_expression = _build_source_expression(input_path, start_year=start_year if input_path.is_dir() else None, end_year=end_year if input_path.is_dir() else None)
-    if not source_expression:
+    resolved = resolve_partition_sources(
+        input_path,
+        start_year=start_year if input_path.is_dir() else None,
+        end_year=end_year if input_path.is_dir() else None,
+    )
+    read_expr = build_duckdb_read_expression(resolved)
+    if not read_expr:
         return []
 
     conditions = []
     parameters: list[Any] = []
 
-    for query in cleaned_queries:
+    for query_value in cleaned_queries:
         conditions.append(
             """
             EXISTS (
@@ -295,27 +251,33 @@ def search_author_records_multi(
             )
             """
         )
-        parameters.append(f"%{query}%")
+        parameters.append(f"%{query_value}%")
 
     joiner = " OR " if match_mode == "or" else " AND "
     where_clause = joiner.join(f"({condition.strip()})" for condition in conditions)
 
+    select_columns = ",\n        ".join(
+        [
+            "paper_id",
+            "title",
+            "year_clean",
+            "n_citation",
+            "lang",
+            "venue_name",
+            "fos",
+            "fos_count",
+            '"references" AS references_list',
+            "reference_count",
+            "author_ids",
+            "author_names",
+            "author_count",
+        ]
+    )
+
     query = f"""
     SELECT
-        paper_id,
-        title,
-        year_clean,
-        n_citation,
-        lang,
-        venue_name,
-        fos,
-        fos_count,
-        "references" AS references_list,
-        reference_count,
-        author_ids,
-        author_names,
-        author_count
-    FROM read_parquet([{source_expression}])
+        {select_columns}
+    FROM {read_expr}
     WHERE {where_clause}
     ORDER BY year_clean DESC NULLS LAST, n_citation DESC NULLS LAST, title ASC
     LIMIT ?

@@ -10,21 +10,7 @@ from typing import Any
 import duckdb
 import networkx as nx
 
-
-GRAPH_BUILD_COLUMNS = [
-    "paper_id",
-    "title",
-    "year_clean",
-    "n_citation",
-    "lang",
-    "venue_name",
-    "fos_count",
-    "reference_count",
-    "author_count",
-    "references",
-    "author_ids",
-    "author_names",
-]
+from citation_graphs.scan_strategy import build_duckdb_read_expression, resolve_partition_sources
 
 
 def _safe_json_loads(value: Any) -> Any:
@@ -140,16 +126,28 @@ def _drop_none_attributes(attrs: dict[str, Any]) -> dict[str, Any]:
     return {k: v for k, v in attrs.items() if v is not None}
 
 
-def _readable_input(path: Path) -> str:
-    path = Path(path)
-    if path.is_dir():
-        return str(path / "**" / "*.parquet")
-    return str(path)
-
-
-def load_graph_build_rows(input_path: str | Path) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+def load_graph_build_rows(
+    input_path: str | Path,
+    start_year: int | None = None,
+    end_year: int | None = None,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     input_path = Path(input_path)
-    source = _readable_input(input_path)
+    resolved = resolve_partition_sources(
+        input_path,
+        start_year=start_year if input_path.is_dir() else None,
+        end_year=end_year if input_path.is_dir() else None,
+    )
+    read_expr = build_duckdb_read_expression(resolved)
+    if not read_expr:
+        return [], {
+            "load_seconds": 0.0,
+            "row_count": 0,
+            "source": str(input_path.resolve()),
+            "files_scanned": resolved.get("files_scanned", 0),
+            "partitions": resolved.get("partitions", []),
+            "used_year_filter": resolved.get("used_year_filter", False),
+            "columns_read": [],
+        }
 
     started = time.perf_counter()
 
@@ -167,7 +165,7 @@ def load_graph_build_rows(input_path: str | Path) -> tuple[list[dict[str, Any]],
         "references" AS references_list,
         author_ids,
         author_names
-    FROM read_parquet('{source}')
+    FROM {read_expr}
     """
 
     con = duckdb.connect(database=":memory:")
@@ -200,6 +198,23 @@ def load_graph_build_rows(input_path: str | Path) -> tuple[list[dict[str, Any]],
         "load_seconds": elapsed,
         "row_count": len(normalized_rows),
         "source": str(input_path.resolve()),
+        "files_scanned": resolved.get("files_scanned", 0),
+        "partitions": resolved.get("partitions", []),
+        "used_year_filter": resolved.get("used_year_filter", False),
+        "columns_read": [
+            "paper_id",
+            "title",
+            "year_clean",
+            "n_citation",
+            "lang",
+            "venue_name",
+            "fos_count",
+            "reference_count",
+            "author_count",
+            "references",
+            "author_ids",
+            "author_names",
+        ],
     }
 
 
@@ -250,7 +265,6 @@ def build_citation_graph(rows: list[dict[str, Any]]) -> tuple[nx.DiGraph, dict[s
                 continue
             if ref_id not in paper_ids:
                 continue
-
             if not graph.has_node(ref_id):
                 continue
 
