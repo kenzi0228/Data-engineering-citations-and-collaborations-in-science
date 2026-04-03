@@ -21,6 +21,7 @@ from citation_graphs.author_profile import build_author_profile
 from citation_graphs.fos_index import load_fos_index
 from citation_graphs.manifests import append_pipeline_run, read_pipeline_runs
 from citation_graphs.path_finder import investigate_path_between_nodes, load_graph
+from citation_graphs.publication_index import load_publication_index, suggest_publications
 from citation_graphs.publication_profile import build_publication_profile
 from citation_graphs.publication_search import export_publication_results_csv, search_publication_records
 from citation_graphs.search import export_search_results_csv, search_author_records, search_author_records_multi, slugify
@@ -208,6 +209,14 @@ def merge_selected_with_suggestions(selected: list[str], suggestions: list[str])
         seen.add(name)
         merged.append(name)
     return merged
+
+
+def load_publication_index_for_source(source_mode: str) -> list[str]:
+    if source_mode == "normalized":
+        return load_publication_index(REFERENCE_DIR / "publication_index_normalized.json")
+    if source_mode == "sample":
+        return load_publication_index(REFERENCE_DIR / "publication_index_sample.json")
+    return []
 
 
 def render_readable_paths(paths: list[list[dict[str, str]]], title: str) -> None:
@@ -459,6 +468,10 @@ if "publication_profile" not in st.session_state:
     st.session_state["publication_profile"] = None
 if "publication_title_query" not in st.session_state:
     st.session_state["publication_title_query"] = ""
+if "publication_selected_titles" not in st.session_state:
+    st.session_state["publication_selected_titles"] = []
+if "publication_selected_titles_input" not in st.session_state:
+    st.session_state["publication_selected_titles_input"] = []
 if "insights_base_name" not in st.session_state:
     st.session_state["insights_base_name"] = None
 if "insights_graph_type" not in st.session_state:
@@ -944,32 +957,94 @@ with publication_tab:
     with publication_year_col2:
         publication_end_year = st.number_input("End year", min_value=1800, max_value=2026, value=2022, step=1, key="publication_end_year")
 
-    publication_title_query = st.text_input(
-        "Publication title filter",
-        value=st.session_state.get("publication_title_query", ""),
-        key="publication_title_query_input",
-        help="Search publications by title fragment.",
+    publication_title_filter_col, publication_title_select_col = st.columns([1.2, 1.8])
+
+    with publication_title_filter_col:
+        publication_title_query = st.text_input(
+            "Publication title filter",
+            value="",
+            key="publication_title_query_input",
+            help="Type at least 2 characters to filter indexed publication titles, or search free text directly.",
+        )
+        publication_suggestion_limit = st.number_input(
+            "Publication suggestion limit",
+            min_value=10,
+            max_value=200,
+            value=60,
+            step=10,
+            key="publication_suggestion_limit",
+        )
+
+        if st.button("Clear selected publications", width="stretch", key="publication_clear_selected_titles"):
+            st.session_state["publication_selected_titles"] = []
+            st.session_state["publication_clear_request"] = True
+
+    with publication_title_select_col:
+        publication_index_titles = load_publication_index_for_source(publication_source_mode)
+
+        if st.session_state.get("publication_clear_request"):
+            st.session_state["publication_selected_titles_input"] = []
+            st.session_state["publication_clear_request"] = False
+
+        existing_publication_selected = st.session_state.get(
+            "publication_selected_titles_input",
+            st.session_state.get("publication_selected_titles", []),
+        )
+        publication_suggestions = (
+            suggest_publications(publication_index_titles, publication_title_query, limit=int(publication_suggestion_limit))
+            if publication_index_titles and len(publication_title_query.strip()) >= 2
+            else []
+        )
+        publication_selection_options = merge_selected_with_suggestions(existing_publication_selected, publication_suggestions)
+
+        selected_publication_titles = st.multiselect(
+            "Indexed publication selection",
+            options=publication_selection_options,
+            default=existing_publication_selected,
+            key="publication_selected_titles_input",
+            help="Selected publication titles persist even when the filter text changes.",
+        )
+
+        st.session_state["publication_selected_titles"] = selected_publication_titles
+
+        if selected_publication_titles:
+            st.caption("Selected publications")
+            st.code("\n".join(selected_publication_titles[:10]))
+        else:
+            st.info("No publication selected yet. Type at least 2 characters to get clean title suggestions.")
+
+        if len(publication_title_query.strip()) >= 2:
+            if publication_suggestions:
+                st.caption("Current publication suggestions preview")
+                st.write(", ".join(publication_suggestions[:20]))
+            else:
+                st.caption("No publication suggestions for the current filter.")
+
+    effective_publication_query = (
+        selected_publication_titles[0]
+        if selected_publication_titles
+        else publication_title_query.strip()
     )
 
     if st.button("Search publications", width="stretch", key="publication_search_button"):
         if not publication_source_path:
             raise_ui_error("Selected source is missing.")
-        elif not publication_title_query.strip():
+        elif not effective_publication_query:
             raise_ui_error("Publication title query cannot be empty.")
         else:
             try:
                 rows = search_publication_records(
                     publication_source_path,
-                    title_query=publication_title_query.strip(),
+                    title_query=effective_publication_query,
                     limit=int(publication_limit),
                     start_year=publication_start_year if publication_enable_year_filter else None,
                     end_year=publication_end_year if publication_enable_year_filter else None,
                 )
-                profile = build_publication_profile(rows, title_query=publication_title_query.strip())
+                profile = build_publication_profile(rows, title_query=effective_publication_query)
 
                 st.session_state["publication_rows"] = rows
                 st.session_state["publication_profile"] = profile
-                st.session_state["publication_title_query"] = publication_title_query.strip()
+                st.session_state["publication_title_query"] = effective_publication_query
                 st.success(f"Found {len(rows)} matching publication record(s).")
             except Exception as exc:
                 raise_ui_error(str(exc))
