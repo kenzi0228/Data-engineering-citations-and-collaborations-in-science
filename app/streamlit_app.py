@@ -576,6 +576,8 @@ if "publication_selected_titles" not in st.session_state:
     st.session_state["publication_selected_titles"] = []
 if "publication_selected_titles_input" not in st.session_state:
     st.session_state["publication_selected_titles_input"] = []
+if "demo_mode_selected_preset" not in st.session_state:
+    st.session_state["demo_mode_selected_preset"] = ""
 if "insights_base_name" not in st.session_state:
     st.session_state["insights_base_name"] = None
 if "insights_graph_type" not in st.session_state:
@@ -584,11 +586,36 @@ if "insights_graph_type" not in st.session_state:
 st.title("Citation & Collaboration Graph Pipeline")
 st.caption("Quick Start: 1) inspect raw data, 2) normalize, 3) create a subset, 4) build a graph, 5) run analysis, 6) explore insights, comparisons, quality and reports.")
 
-overview_tab, search_tab, publication_tab, demo_tab, inspect_tab, normalize_tab, filter_tab, graph_tab, analyze_tab, insights_tab, compare_tab, path_tab, quality_tab, history_tab, artifacts_tab = st.tabs(
+
+
+def apply_demo_preset(preset_name: str) -> None:
+    st.session_state["demo_mode_selected_preset"] = preset_name
+
+    if preset_name == "author_demo":
+        st.session_state["search_source_mode"] = "sample"
+        st.session_state["search_author_filter_text"] = "Ian"
+        st.session_state["search_enable_year_filter"] = False
+
+    elif preset_name == "publication_demo":
+        st.session_state["publication_source_mode"] = "sample"
+        st.session_state["publication_title_query_input"] = "Smart"
+        st.session_state["publication_enable_year_filter"] = False
+
+    elif preset_name == "compare_demo":
+        st.session_state["compare_mode"] = "publications"
+
+    elif preset_name == "insights_demo":
+        analysis_bases = extract_analysis_base_names()
+        if analysis_bases:
+            st.session_state["insights_base_name"] = analysis_bases[0]
+            st.session_state["insights_graph_type"] = "citation"
+
+overview_tab, search_tab, publication_tab, recruiter_demo_tab, demo_tab, inspect_tab, normalize_tab, filter_tab, graph_tab, analyze_tab, insights_tab, compare_tab, path_tab, quality_tab, history_tab, artifacts_tab = st.tabs(
     [
         "Overview",
         "Search",
         "Publication Search",
+        "Demo Mode",
         "Demo",
         "Inspect Raw",
         "Normalize",
@@ -1353,6 +1380,62 @@ with publication_tab:
             if report_preview:
                 st.markdown("#### Publication report preview")
                 st.text_area("Publication report preview", report_preview[:4000], height=220, key="publication_report_preview")
+
+
+with recruiter_demo_tab:
+    section_header("Recruiter Demo Mode", "Run guided product-style scenarios that showcase the project quickly.")
+    st.info("Pick a scenario, apply the preset, then continue in the suggested tab.")
+
+    st.markdown("### Recommended demo scenarios")
+
+    demo_col_1, demo_col_2 = st.columns(2)
+
+    with demo_col_1:
+        st.markdown("#### 1. Author investigation demo")
+        st.write("Show author search, profile synthesis, and downstream analytics.")
+        if st.button("Apply author demo preset", width="stretch", key="demo_mode_author_preset"):
+            apply_demo_preset("author_demo")
+            st.success("Author demo preset applied. Next: open Search.")
+
+        st.markdown("#### 2. Publication investigation demo")
+        st.write("Show title-based discovery, publication search, and graph workflows.")
+        if st.button("Apply publication demo preset", width="stretch", key="demo_mode_publication_preset"):
+            apply_demo_preset("publication_demo")
+            st.success("Publication demo preset applied. Next: open Publication Search.")
+
+    with demo_col_2:
+        st.markdown("#### 3. Comparison demo")
+        st.write("Show graph connectivity, shortest paths, and node-to-node comparison.")
+        if st.button("Apply comparison demo preset", width="stretch", key="demo_mode_compare_preset"):
+            apply_demo_preset("compare_demo")
+            st.success("Comparison demo preset applied. Next: open Compare.")
+
+        st.markdown("#### 4. Insights demo")
+        st.write("Show graph health, centrality leaders, and narrative interpretation.")
+        if st.button("Apply insights demo preset", width="stretch", key="demo_mode_insights_preset"):
+            apply_demo_preset("insights_demo")
+            st.success("Insights demo preset applied. Next: open Insights.")
+
+    st.markdown("### Suggested recruiter walkthrough")
+    st.markdown(
+        "- Start with **Author demo** to show search and profile exploration.\n"
+        "- Continue with **Publication demo** to show title search and graph workflows.\n"
+        "- Use **Compare** to show relationship analysis.\n"
+        "- Finish with **Insights** to show analytical depth."
+    )
+
+    current_preset = st.session_state.get("demo_mode_selected_preset", "")
+    if current_preset:
+        render_json_summary(
+            "Active demo preset",
+            {
+                "preset": current_preset,
+                "search_author_filter_text": st.session_state.get("search_author_filter_text"),
+                "publication_title_query_input": st.session_state.get("publication_title_query_input"),
+                "compare_mode": st.session_state.get("compare_mode"),
+                "insights_base_name": st.session_state.get("insights_base_name"),
+            },
+        )
 
 with demo_tab:
     section_header("Demo Workflow", "Create or select a sample, then build, analyze and report on it end to end.")
