@@ -576,8 +576,6 @@ if "publication_selected_titles" not in st.session_state:
     st.session_state["publication_selected_titles"] = []
 if "publication_selected_titles_input" not in st.session_state:
     st.session_state["publication_selected_titles_input"] = []
-if "demo_mode_selected_preset" not in st.session_state:
-    st.session_state["demo_mode_selected_preset"] = ""
 if "insights_base_name" not in st.session_state:
     st.session_state["insights_base_name"] = None
 if "insights_graph_type" not in st.session_state:
@@ -588,35 +586,14 @@ st.caption("Quick Start: 1) inspect raw data, 2) normalize, 3) create a subset, 
 
 
 
-def apply_demo_preset(preset_name: str) -> None:
-    st.session_state["demo_mode_selected_preset"] = preset_name
-
-    if preset_name == "author_demo":
-        st.session_state["search_source_mode"] = "sample"
-        st.session_state["search_author_filter_text"] = "Ian"
-        st.session_state["search_enable_year_filter"] = False
-
-    elif preset_name == "publication_demo":
-        st.session_state["publication_source_mode"] = "sample"
-        st.session_state["publication_title_query_input"] = "Smart"
-        st.session_state["publication_enable_year_filter"] = False
-
-    elif preset_name == "compare_demo":
-        st.session_state["compare_mode"] = "publications"
-
-    elif preset_name == "insights_demo":
-        analysis_bases = extract_analysis_base_names()
-        if analysis_bases:
-            st.session_state["insights_base_name"] = analysis_bases[0]
-            st.session_state["insights_graph_type"] = "citation"
 
 overview_tab, search_tab, publication_tab, recruiter_demo_tab, demo_tab, inspect_tab, normalize_tab, filter_tab, graph_tab, analyze_tab, insights_tab, compare_tab, path_tab, quality_tab, history_tab, artifacts_tab = st.tabs(
     [
         "Overview",
         "Search",
         "Publication Search",
-        "Demo Mode",
-        "Demo",
+        "Guided Demo",
+        "Sample Workflow",
         "Inspect Raw",
         "Normalize",
         "Filter Subset",
@@ -661,6 +638,13 @@ with overview_tab:
     )
 
 with search_tab:
+    pending_demo_preset = st.session_state.get("pending_demo_preset", "")
+    if pending_demo_preset == "author_demo":
+        st.session_state["search_source_mode"] = "sample"
+        st.session_state["search_author_filter_text"] = "Ian"
+        st.session_state["search_enable_year_filter"] = False
+        st.session_state["pending_demo_preset"] = ""
+
     section_header("Author Investigation", "Search one or several authors, use exact indexed suggestions, and build subset or ego-graph artifacts.")
     st.info("Quick guide: choose a source, type at least 2 characters to search indexed authors, optionally enable a year filter for faster searches on normalized data, then run the search.")
 
@@ -1044,6 +1028,7 @@ with search_tab:
 
 
 with publication_tab:
+
     section_header("Publication Search", "Search publications by title, inspect their profile, and build publication-centered citation artifacts.")
     st.info("Quick guide: choose a source, enter a title fragment, optionally filter by year range, then search. Use sample or subset for faster demos.")
 
@@ -1383,7 +1368,7 @@ with publication_tab:
 
 
 with recruiter_demo_tab:
-    section_header("Recruiter Demo Mode", "Run guided product-style scenarios that showcase the project quickly.")
+    section_header("Guided Demo", "Run guided product-style scenarios that showcase the project quickly.")
     st.info("Pick a scenario, apply the preset, then continue in the suggested tab.")
 
     st.markdown("### Recommended demo scenarios")
@@ -1438,7 +1423,7 @@ with recruiter_demo_tab:
         )
 
 with demo_tab:
-    section_header("Demo Workflow", "Create or select a sample, then build, analyze and report on it end to end.")
+    section_header("Sample Workflow", "Create or select a sample, then build, analyze and report on it end to end.")
 
     sample_parquets = list_sample_parquets()
     sample_names = [p.name for p in sample_parquets]
@@ -1877,6 +1862,7 @@ with analyze_tab:
     render_json_details_toggle("analysis output", analysis_data, "analysis_output_full")
 
 with insights_tab:
+
     section_header("Insights", "Inspect graph analyses, summaries, rankings, and derived interpretation layers.")
 
     analysis_bases = extract_analysis_base_names()
@@ -1990,6 +1976,7 @@ with insights_tab:
 
 
 with compare_tab:
+
     section_header("Compare", "Compare two authors or two publications using graph connectivity and shortest paths.")
 
     compare_mode = st.selectbox(
